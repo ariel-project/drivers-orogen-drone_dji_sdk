@@ -1,19 +1,10 @@
 <package>
-  <description brief="Orogen to drone DJI SDK">
+  <description brief="Orogen pkg to drone DJI SDK">
   
   </description>
   <author>Rodrigo Santos Leonello/rodrigo.leonello@tidewise.io</author>
-  <license></license>
-  <url>http://</url>
-  <logo>http://</logo>
+  <license>Proprietary</license>
   <depend package="base/cmake" />
-  <!--
-   To add any dependencies use the depend tag
-  <depend package="dummy-dependency-0" />
-	...
-  <depend package="dummy-dependency-n-1" />
-  <depend package="dummy-dependency-n" />
-  -->
   <depend package="base/types" />
   <depend package="base/logging" />
   <depend package="drivers/dji_sdk" />
