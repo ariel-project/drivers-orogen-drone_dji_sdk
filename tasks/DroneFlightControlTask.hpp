@@ -1,32 +1,43 @@
 /* Generated from orogen/lib/orogen/templates/tasks/Task.hpp */
 
-#ifndef DRONE_DJI_SDK_DJIDRONEPOSITIONCONTROLTASK_TASK_HPP
-#define DRONE_DJI_SDK_DJIDRONEPOSITIONCONTROLTASK_TASK_HPP
+#ifndef DRONE_DJI_SDK_DRONEFLIGHTCONTROLTASK_TASK_HPP
+#define DRONE_DJI_SDK_DRONEFLIGHTCONTROLTASK_TASK_HPP
 
-#include "drone_dji_sdk/DJIDronePositionControlTaskBase.hpp"
+#include "drone_dji_sdk/DroneFlightControlTaskBase.hpp"
 
 namespace drone_dji_sdk{
 
-    /*! \class DJIDronePositionControlTask
-     *  Implements methods to the position controller from de DJI SDK.
+    /*! \class DroneFlightControlTask
+     * \brief The task context provides and requires services. It uses an ExecutionEngine to perform its functions.
+     * Essential interfaces are operations, data flow ports and properties. These interfaces have been defined using the oroGen specification.
+     * In order to modify the interfaces you should (re)use oroGen and rely on the associated workflow.
+     * 
+     * \details
+     * The name of a TaskContext is primarily defined via:
+     \verbatim
+     deployment 'deployment_name'
+         task('custom_task_name','drone_dji_sdk::DroneFlightControlTask')
+     end
+     \endverbatim
+     *  It can be dynamically adapted when the deployment is called with a prefix argument.
      */
-    class DJIDronePositionControlTask : public DJIDronePositionControlTaskBase
+    class DroneFlightControlTask : public DroneFlightControlTaskBase
     {
-	friend class DJIDronePositionControlTaskBase;
+	friend class DroneFlightControlTaskBase;
     protected:
 
 
 
     public:
-        /** TaskContext constructor for DJIDronePositionControlTask
+        /** TaskContext constructor for DroneFlightControlTask
          * \param name Name of the task. This name needs to be unique to make it identifiable via nameservices.
          * \param initial_state The initial TaskState of the TaskContext. Default is Stopped state.
          */
-        DJIDronePositionControlTask(std::string const& name = "drone_dji_sdk::DJIDronePositionControlTask");
+        DroneFlightControlTask(std::string const& name = "drone_dji_sdk::DroneFlightControlTask");
 
-        /** Default deconstructor of DJIDronePositionControlTask
+        /** Default deconstructor of DroneFlightControlTask
          */
-	~DJIDronePositionControlTask();
+	~DroneFlightControlTask();
 
         /** This hook is called by Orocos when the state machine transitions
          * from PreOperational to Stopped. If it returns false, then the

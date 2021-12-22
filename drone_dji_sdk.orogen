@@ -5,7 +5,7 @@ using_library "dji_sdk"
 import_types_from "drone_dji_sdkTypes.hpp"
 import_types_from "std"
 
-task_context "DJIDronePositionControlTask" do
+task_context "DroneFlightControlTask" do
 
     needs_configuration
 
