@@ -4,6 +4,20 @@
 #define DRONE_DJI_SDK_DRONEFLIGHTCONTROLTASK_TASK_HPP
 
 #include "drone_dji_sdk/DroneFlightControlTaskBase.hpp"
+#include "dji_vehicle.hpp"
+#include "stdint.h"
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include "osdk_typedef.h"
+#include "osdk_platform.h"
+
 
 namespace drone_dji_sdk{
 
@@ -23,9 +37,8 @@ namespace drone_dji_sdk{
      */
     class DroneFlightControlTask : public DroneFlightControlTaskBase
     {
-	friend class DroneFlightControlTaskBase;
+	    friend class DroneFlightControlTaskBase;
     protected:
-
 
 
     public:
@@ -96,8 +109,27 @@ namespace drone_dji_sdk{
          * before calling start() again.
          */
         void cleanupHook();
+
+    private:
+
+        static E_OsdkStat
+        OsdkUser_Console(const uint8_t *data,
+                         uint16_t dataLen);
+        static E_OsdkStat
+        OsdkLinux_UartInit(const char *port,
+                           const int baudrate,
+                           T_HalObj *obj);
+        static E_OsdkStat
+        OsdkLinux_UartSendData(const T_HalObj *obj,
+                               const uint8_t *pBuf,
+                               uint32_t bufLen);
+        static E_OsdkStat
+        OsdkLinux_UartReadData(const T_HalObj *obj,
+                               uint8_t *pBuf,
+                               uint32_t *bufLen);
+        static E_OsdkStat
+        OsdkLinux_UartClose(T_HalObj *obj);                            
     };
 }
-
 #endif
 
