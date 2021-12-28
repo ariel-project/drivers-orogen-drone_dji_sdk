@@ -52,7 +52,26 @@ void DroneFlightControlTask::updateHook()
     if(DJI_REG_UART_HANDLER(&halUartHandler) != true) {
         throw std::runtime_error("Uart handler register fail");
     }
-
+    static T_OsdkOsalHandler osalHandler = {
+        DroneFlightControlTask::OsdkLinux_TaskCreate,
+        DroneFlightControlTask::OsdkLinux_TaskDestroy,
+        DroneFlightControlTask::OsdkLinux_TaskSleepMs,
+        DroneFlightControlTask::OsdkLinux_MutexCreate,
+        DroneFlightControlTask::OsdkLinux_MutexDestroy,
+        DroneFlightControlTask::OsdkLinux_MutexLock,
+        DroneFlightControlTask::OsdkLinux_MutexUnlock,
+        DroneFlightControlTask::OsdkLinux_SemaphoreCreate,
+        DroneFlightControlTask::OsdkLinux_SemaphoreDestroy,
+        DroneFlightControlTask::OsdkLinux_SemaphoreWait,
+        DroneFlightControlTask::OsdkLinux_SemaphoreTimedWait,
+        DroneFlightControlTask::OsdkLinux_SemaphorePost,
+        DroneFlightControlTask::OsdkLinux_GetTimeMs,
+        DroneFlightControlTask::OsdkLinux_Malloc,
+        DroneFlightControlTask::OsdkLinux_Free,
+    };
+    if(DJI_REG_OSAL_HANDLER(&osalHandler) != true) {
+        throw std::runtime_error("Osal handler register fail");
+  }
     DroneFlightControlTaskBase::updateHook();
 }
 void DroneFlightControlTask::errorHook()
@@ -164,7 +183,7 @@ DroneFlightControlTask::OsdkLinux_UartSendData(const T_HalObj *obj,
     } else {
         return OSDK_STAT_ERR;
     }
-}                                               
+}
 E_OsdkStat
 DroneFlightControlTask::OsdkLinux_UartReadData(const T_HalObj *obj,
                                                uint8_t *pBuf,
@@ -193,4 +212,157 @@ DroneFlightControlTask::OsdkLinux_UartClose(T_HalObj *obj)
     close(obj->uartObject.fd);
 
     return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_TaskCreate(
+    T_OsdkTaskHandle *task,
+    void *(*taskFunc)(void *),
+    uint32_t stackSize, void *arg)
+{
+    int result;
+    // *task = malloc(sizeof(pthread_t));
+    result = pthread_create((pthread_t *)task, NULL, taskFunc, arg);
+    if (result != 0) {
+        return OSDK_STAT_ERR;
+    }
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_TaskDestroy(T_OsdkTaskHandle task)
+{
+    pthread_cancel(*(pthread_t *)task);
+    pthread_join(*(pthread_t *)task, NULL);
+
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_TaskSleepMs(uint32_t time_ms)
+{
+    usleep(1000 * time_ms);
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_MutexCreate(T_OsdkMutexHandle *mutex)
+{
+    int result;
+    // *mutex = malloc(sizeof(pthread_mutex_t));
+    result = pthread_mutex_init((pthread_mutex_t *)mutex, NULL);
+    if (result != 0) {
+        return OSDK_STAT_ERR;
+    }
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_MutexDestroy(T_OsdkMutexHandle mutex)
+{
+    int result;
+    result = pthread_mutex_destroy((pthread_mutex_t *)mutex);
+    if (result != 0) {
+        return OSDK_STAT_ERR;
+    }
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_MutexLock(T_OsdkMutexHandle mutex)
+{
+    int result;
+    result = pthread_mutex_lock((pthread_mutex_t *)mutex);
+    if (result != 0) {
+        return OSDK_STAT_ERR;
+    }
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_MutexUnlock(T_OsdkMutexHandle mutex)
+{
+    int result = pthread_mutex_unlock((pthread_mutex_t *)mutex);
+    if (result != 0) {
+        return OSDK_STAT_ERR;
+    }
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_SemaphoreCreate(
+    T_OsdkSemHandle *semaphore,
+    uint32_t initValue)
+{
+    int result;
+    // *semaphore = malloc(sizeof(sem_t));
+    result = sem_init((sem_t *)semaphore, 0, (unsigned int)initValue);
+    if (result != 0) {
+        return OSDK_STAT_ERR;
+    }
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_SemaphoreDestroy(
+    T_OsdkSemHandle semaphore)
+{
+    int result;
+    result = sem_destroy((sem_t *)semaphore);
+    if (result != 0) {
+        return OSDK_STAT_ERR;
+    }
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_SemaphoreWait(
+    T_OsdkSemHandle semaphore)
+{
+    int result;
+    result = sem_wait((sem_t *)semaphore);
+    if (result != 0) {
+        return OSDK_STAT_ERR;
+    }
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_SemaphoreTimedWait(
+    T_OsdkSemHandle semaphore,
+    uint32_t waitTime)
+{
+    int result;
+    struct timespec semaphoreWaitTime;
+    struct timeval systemTime;
+    gettimeofday(&systemTime, NULL);
+    systemTime.tv_usec += waitTime * 1000;
+    if (systemTime.tv_usec >= 1000000) {
+        systemTime.tv_sec += systemTime.tv_usec / 1000000;
+        systemTime.tv_usec %= 1000000;
+    }
+    semaphoreWaitTime.tv_sec = systemTime.tv_sec;
+    semaphoreWaitTime.tv_nsec = systemTime.tv_usec * 1000;
+    result = sem_timedwait((sem_t *)semaphore, &semaphoreWaitTime);
+    if (result != 0) {
+        return OSDK_STAT_ERR;
+    }
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_SemaphorePost(
+    T_OsdkSemHandle semaphore)
+{
+    int result;
+    result = sem_post((sem_t *)semaphore);
+    if (result != 0) {
+      return OSDK_STAT_ERR;
+    }
+    return OSDK_STAT_OK;
+}
+E_OsdkStat
+DroneFlightControlTask::OsdkLinux_GetTimeMs(uint32_t *ms)
+{
+    struct timeval time;
+    gettimeofday(&time, NULL);
+    *ms = (time.tv_sec * 1000 + time.tv_usec / 1000);
+
+    return OSDK_STAT_OK;
+}
+void *DroneFlightControlTask::OsdkLinux_Malloc(uint32_t size)
+{
+  return malloc(size);
+}
+void DroneFlightControlTask::OsdkLinux_Free(void *ptr)
+{
+  free(ptr);
 }
