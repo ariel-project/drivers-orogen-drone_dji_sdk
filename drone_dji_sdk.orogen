@@ -9,7 +9,12 @@ task_context "DroneFlightControlTask" do
 
     needs_configuration
 
-    property "config_value", "/std/string"
+    property "app_id", "/uint32_t", 0
+    property "app_key", "/std/string", ""
+    property "device", "/std/string", "/dev/ttyUSB0"
+    property "baudrate", "/uint32_t", 230_400
+    property "acm_port", "/std/string", "/dev/ttyACM0"
+
     input_port "input", "/std/string"
     output_port "output", "int"
 
