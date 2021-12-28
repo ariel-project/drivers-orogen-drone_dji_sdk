@@ -4,6 +4,8 @@
 #define DRONE_DJI_SDK_DRONEFLIGHTCONTROLTASK_TASK_HPP
 
 #include "drone_dji_sdk/DroneFlightControlTaskBase.hpp"
+#include <dji_setup_helpers.hpp>
+#include "dji_linker.hpp"
 #include "dji_vehicle.hpp"
 #include <pthread.h>
 #include <semaphore.h>
@@ -115,6 +117,13 @@ namespace drone_dji_sdk{
         void cleanupHook();
 
     private:
+
+        uint32_t mFunctionTimeout;
+        Vehicle::ActivateData mActivateData;
+        DJI::OSDK::Setup mSetup;
+
+        void setupEnvironment();
+        bool initVehicle();
 
         static E_OsdkStat
         OsdkUser_Console(const uint8_t *data,

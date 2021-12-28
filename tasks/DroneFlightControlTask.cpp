@@ -29,9 +29,30 @@ bool DroneFlightControlTask::startHook()
 {
     if (! DroneFlightControlTaskBase::startHook())
         return false;
+
+    mFunctionTimeout = 1; // second
+    setupEnvironment();
+    initVehicle();
     return true;
 }
 void DroneFlightControlTask::updateHook()
+{
+    DroneFlightControlTaskBase::updateHook();
+}
+void DroneFlightControlTask::errorHook()
+{
+    DroneFlightControlTaskBase::errorHook();
+}
+void DroneFlightControlTask::stopHook()
+{
+    DroneFlightControlTaskBase::stopHook();
+}
+void DroneFlightControlTask::cleanupHook()
+{
+    DroneFlightControlTaskBase::cleanupHook();
+}
+
+void DroneFlightControlTask::setupEnvironment()
 {
     /*
      * Setup environment
@@ -71,20 +92,61 @@ void DroneFlightControlTask::updateHook()
     };
     if(DJI_REG_OSAL_HANDLER(&osalHandler) != true) {
         throw std::runtime_error("Osal handler register fail");
-  }
-    DroneFlightControlTaskBase::updateHook();
+    }
 }
-void DroneFlightControlTask::errorHook()
+
+bool DroneFlightControlTask::initVehicle()
 {
-    DroneFlightControlTaskBase::errorHook();
-}
-void DroneFlightControlTask::stopHook()
-{
-    DroneFlightControlTaskBase::stopHook();
-}
-void DroneFlightControlTask::cleanupHook()
-{
-    DroneFlightControlTaskBase::cleanupHook();
+    ACK::ErrorCode ack;
+
+    /*! Linker initialization */
+    if (!mSetup.initLinker())
+    {
+        DERROR("Failed to initialize Linker");
+        return false;
+    }
+    /*! Linker add uart channel */
+    if (!mSetup.addFCUartChannel(_device.get().c_str(),
+                                 _baudrate.get()))
+    {
+        DERROR("Failed to initialize Linker channel");
+        return false;
+    }
+    /*! Linker add USB acm channel */
+    if (!mSetup.addUSBACMChannel(_acm_port.get().c_str(),
+                                 _baudrate.get()))
+    {
+        DERROR("Failed to initialize ACM Linker channel!");
+        return false;
+    }
+    /*! Vehicle initialization */
+    if (!mSetup.linker)
+    {
+        DERROR("Linker get failed.");
+        return false;
+    }
+    mSetup.vehicle = new Vehicle(mSetup.linker);
+    if (!mSetup.vehicle)
+    {
+        DERROR("Vehicle create failed.");
+        return false;
+    }
+    // Activate
+    mActivateData.ID = _app_id.get();
+    char app_key[65];
+    mActivateData.encKey = app_key;
+    strcpy(mActivateData.encKey, _app_key.get().c_str());
+    mActivateData.version = mSetup.vehicle->getFwVersion();
+    ack = mSetup.vehicle->activate(&mActivateData, mFunctionTimeout);
+    if (ACK::getError(ack))
+    {
+        ACK::getErrorCodeMessage(ack, __func__);
+        return false;
+    }
+    if (!mSetup.vehicle->isM300()) {
+        mSetup.vehicle->setUSBFlightOn(true);
+    }
+    return true;
 }
 
 E_OsdkStat
