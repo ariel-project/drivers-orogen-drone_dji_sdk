@@ -6,8 +6,7 @@ using namespace DJI::OSDK::Telemetry;
 using namespace DJI::OSDK;
 using namespace drone_dji_sdk;
 
-
-DroneFlightControlTask::DroneFlightControlTask(std::string const& name)
+DroneFlightControlTask::DroneFlightControlTask(std::string const &name)
     : DroneFlightControlTaskBase(name)
 {
 }
@@ -22,13 +21,13 @@ DroneFlightControlTask::~DroneFlightControlTask()
 
 bool DroneFlightControlTask::configureHook()
 {
-    if (! DroneFlightControlTaskBase::configureHook())
+    if (!DroneFlightControlTaskBase::configureHook())
         return false;
     return true;
 }
 bool DroneFlightControlTask::startHook()
 {
-    if (! DroneFlightControlTaskBase::startHook())
+    if (!DroneFlightControlTaskBase::startHook())
         return false;
 
     // AdvancedSensing = false
@@ -64,7 +63,8 @@ void DroneFlightControlTask::setupEnvironment()
         OSDK_LOGGER_CONSOLE_LOG_LEVEL_INFO,
         DroneFlightControlTask::OsdkUser_Console,
     };
-    if(DJI_REG_LOGGER_CONSOLE(&printConsole) != true) {
+    if (DJI_REG_LOGGER_CONSOLE(&printConsole) != true)
+    {
         throw std::runtime_error("logger console register fail");
     }
     static T_OsdkHalUartHandler halUartHandler = {
@@ -73,7 +73,8 @@ void DroneFlightControlTask::setupEnvironment()
         DroneFlightControlTask::OsdkLinux_UartReadData,
         DroneFlightControlTask::OsdkLinux_UartClose,
     };
-    if(DJI_REG_UART_HANDLER(&halUartHandler) != true) {
+    if (DJI_REG_UART_HANDLER(&halUartHandler) != true)
+    {
         throw std::runtime_error("Uart handler register fail");
     }
     static T_OsdkOsalHandler osalHandler = {
@@ -93,7 +94,8 @@ void DroneFlightControlTask::setupEnvironment()
         DroneFlightControlTask::OsdkLinux_Malloc,
         DroneFlightControlTask::OsdkLinux_Free,
     };
-    if(DJI_REG_OSAL_HANDLER(&osalHandler) != true) {
+    if (DJI_REG_OSAL_HANDLER(&osalHandler) != true)
+    {
         throw std::runtime_error("Osal handler register fail");
     }
 }
@@ -134,7 +136,8 @@ bool DroneFlightControlTask::initVehicle()
     if (!mSetup.vehicle)
     {
         DERROR("Vehicle create failed.");
-        if (mSetup.vehicle) delete (mSetup.vehicle);
+        if (mSetup.vehicle)
+            delete (mSetup.vehicle);
         mSetup.vehicle = nullptr;
         return false;
     }
@@ -148,449 +151,432 @@ bool DroneFlightControlTask::initVehicle()
     if (ACK::getError(ack))
     {
         ACK::getErrorCodeMessage(ack, __func__);
-        if (mSetup.vehicle) delete (mSetup.vehicle);
+        if (mSetup.vehicle)
+            delete (mSetup.vehicle);
         mSetup.vehicle = nullptr;
         return false;
     }
-    if (!mSetup.vehicle->isM300()) {
+    if (!mSetup.vehicle->isM300())
+    {
         mSetup.vehicle->setUSBFlightOn(true);
     }
     return true;
 }
 
-bool
-DroneFlightControlTask::monitoredTakeoff(Vehicle* vehicle, int timeout)
+bool DroneFlightControlTask::monitoredTakeoff(Vehicle *vehicle, int timeout)
 {
-  char func[50];
-  int  pkgIndex;
-
-  if (!vehicle->isM100() && !vehicle->isLegacyM600())
-  {
-    // Telemetry: Verify the subscription
-    ACK::ErrorCode subscribeStatus;
-    subscribeStatus = vehicle->subscribe->verify(timeout);
-    if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-    {
-      ACK::getErrorCodeMessage(subscribeStatus, func);
-      return false;
-    }
-
-    // Telemetry: Subscribe to flight status and mode at freq 10 Hz
-    pkgIndex                  = 0;
-    int       freq            = 10;
-    TopicName topicList10Hz[] = { TOPIC_STATUS_FLIGHT,
-                                  TOPIC_STATUS_DISPLAYMODE };
-    int  numTopic        = sizeof(topicList10Hz) / sizeof(topicList10Hz[0]);
-    bool enableTimestamp = false;
-
-    bool pkgStatus = vehicle->subscribe->initPackageFromTopicList(
-      pkgIndex, numTopic, topicList10Hz, enableTimestamp, freq);
-    if (!(pkgStatus))
-    {
-      return pkgStatus;
-    }
-    subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, timeout);
-    if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-    {
-      ACK::getErrorCodeMessage(subscribeStatus, func);
-      // Cleanup before return
-      vehicle->subscribe->removePackage(pkgIndex, timeout);
-      return false;
-    }
-  }
-
-  // Start takeoff
-  ACK::ErrorCode takeoffStatus = vehicle->control->takeoff(timeout);
-  if (ACK::getError(takeoffStatus) != ACK::SUCCESS)
-  {
-    ACK::getErrorCodeMessage(takeoffStatus, func);
-    return false;
-  }
-
-  // First check: Motors started
-  int motorsNotStarted = 0;
-  int timeoutCycles    = 20;
-
-  if (!vehicle->isM100() && !vehicle->isLegacyM600())
-  {
-    while (vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>() !=
-             VehicleStatus::FlightStatus::ON_GROUND &&
-           vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-             VehicleStatus::DisplayMode::MODE_ENGINE_START &&
-           motorsNotStarted < timeoutCycles)
-    {
-      motorsNotStarted++;
-      usleep(100000);
-    }
-
-    if (motorsNotStarted == timeoutCycles)
-    {
-      std::cout << "Takeoff failed. Motors are not spinning." << std::endl;
-      // Cleanup
-      if (!vehicle->isM100() && !vehicle->isLegacyM600())
-      {
-        vehicle->subscribe->removePackage(0, timeout);
-      }
-      return false;
-    }
-    else
-    {
-      std::cout << "Motors spinning...\n";
-    }
-  }
-  else if (vehicle->isLegacyM600())
-  {
-    while ((vehicle->broadcast->getStatus().flight <
-            DJI::OSDK::VehicleStatus::FlightStatus::ON_GROUND) &&
-           motorsNotStarted < timeoutCycles)
-    {
-      motorsNotStarted++;
-      usleep(100000);
-    }
-
-    if (motorsNotStarted < timeoutCycles)
-    {
-      std::cout << "Successful TakeOff!" << std::endl;
-    }
-  }
-  else // M100
-  {
-    while ((vehicle->broadcast->getStatus().flight <
-            DJI::OSDK::VehicleStatus::M100FlightStatus::TAKEOFF) &&
-           motorsNotStarted < timeoutCycles)
-    {
-      motorsNotStarted++;
-      usleep(100000);
-    }
-
-    if (motorsNotStarted < timeoutCycles)
-    {
-      std::cout << "Successful TakeOff!" << std::endl;
-    }
-  }
-
-  // Second check: In air
-  int stillOnGround = 0;
-  timeoutCycles     = 110;
-
-  if (!vehicle->isM100() && !vehicle->isLegacyM600())
-  {
-    while (vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>() !=
-             VehicleStatus::FlightStatus::IN_AIR &&
-           (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-              VehicleStatus::DisplayMode::MODE_ASSISTED_TAKEOFF ||
-            vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-              VehicleStatus::DisplayMode::MODE_AUTO_TAKEOFF) &&
-           stillOnGround < timeoutCycles)
-    {
-      stillOnGround++;
-      usleep(100000);
-    }
-
-    if (stillOnGround == timeoutCycles)
-    {
-      std::cout << "Takeoff failed. Aircraft is still on the ground, but the "
-                   "motors are spinning."
-                << std::endl;
-      // Cleanup
-      if (!vehicle->isM100() && !vehicle->isLegacyM600())
-      {
-        vehicle->subscribe->removePackage(0, timeout);
-      }
-      return false;
-    }
-    else
-    {
-      std::cout << "Ascending...\n";
-    }
-  }
-  else if (vehicle->isLegacyM600())
-  {
-    while ((vehicle->broadcast->getStatus().flight <
-            DJI::OSDK::VehicleStatus::FlightStatus::IN_AIR) &&
-           stillOnGround < timeoutCycles)
-    {
-      stillOnGround++;
-      usleep(100000);
-    }
-
-    if (stillOnGround < timeoutCycles)
-    {
-      std::cout << "Aircraft in air!" << std::endl;
-    }
-  }
-  else // M100
-  {
-    while ((vehicle->broadcast->getStatus().flight !=
-            DJI::OSDK::VehicleStatus::M100FlightStatus::IN_AIR_STANDBY) &&
-           stillOnGround < timeoutCycles)
-    {
-      stillOnGround++;
-      usleep(100000);
-    }
-
-    if (stillOnGround < timeoutCycles)
-    {
-      std::cout << "Aircraft in air!" << std::endl;
-    }
-  }
-
-  // Final check: Finished takeoff
-  if (!vehicle->isM100() && !vehicle->isLegacyM600())
-  {
-    while (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() ==
-             VehicleStatus::DisplayMode::MODE_ASSISTED_TAKEOFF ||
-           vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() ==
-             VehicleStatus::DisplayMode::MODE_AUTO_TAKEOFF)
-    {
-      sleep(1);
-    }
+    char func[50];
+    int pkgIndex;
 
     if (!vehicle->isM100() && !vehicle->isLegacyM600())
     {
-      if (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-            VehicleStatus::DisplayMode::MODE_P_GPS ||
-          vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-            VehicleStatus::DisplayMode::MODE_ATTITUDE)
-      {
-        std::cout << "Successful takeoff!\n";
-      }
-      else
-      {
-        std::cout
-          << "Takeoff finished, but the aircraft is in an unexpected mode. "
-             "Please connect DJI GO.\n";
-        vehicle->subscribe->removePackage(0, timeout);
+        // Telemetry: Verify the subscription
+        ACK::ErrorCode subscribeStatus;
+        subscribeStatus = vehicle->subscribe->verify(timeout);
+        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+        {
+            ACK::getErrorCodeMessage(subscribeStatus, func);
+            return false;
+        }
+        // Telemetry: Subscribe to flight status and mode at freq 10 Hz
+        pkgIndex = 0;
+        int freq = 10;
+        TopicName topicList10Hz[] = {TOPIC_STATUS_FLIGHT,
+                                     TOPIC_STATUS_DISPLAYMODE};
+        int numTopic = sizeof(topicList10Hz) / sizeof(topicList10Hz[0]);
+        bool enableTimestamp = false;
+        bool pkgStatus = vehicle->subscribe->initPackageFromTopicList(
+            pkgIndex, numTopic, topicList10Hz, enableTimestamp, freq);
+        if (!(pkgStatus))
+        {
+            return pkgStatus;
+        }
+        subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, timeout);
+        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+        {
+            ACK::getErrorCodeMessage(subscribeStatus, func);
+            // Cleanup before return
+            vehicle->subscribe->removePackage(pkgIndex, timeout);
+            return false;
+        }
+    }
+
+    // Start takeoff
+    ACK::ErrorCode takeoffStatus = vehicle->control->takeoff(timeout);
+    if (ACK::getError(takeoffStatus) != ACK::SUCCESS)
+    {
+        ACK::getErrorCodeMessage(takeoffStatus, func);
         return false;
-      }
     }
-  }
-  else
-  {
-    float32_t                 delta;
-    Telemetry::GlobalPosition currentHeight;
-    Telemetry::GlobalPosition deltaHeight =
-      vehicle->broadcast->getGlobalPosition();
-
-    do
+    // First check: Motors started
+    int motorsNotStarted = 0;
+    int timeoutCycles = 20;
+    if (!vehicle->isM100() && !vehicle->isLegacyM600())
     {
-      sleep(4);
-      currentHeight = vehicle->broadcast->getGlobalPosition();
-      delta         = fabs(currentHeight.altitude - deltaHeight.altitude);
-      deltaHeight.altitude = currentHeight.altitude;
-    } while (delta >= 0.009);
-
-    std::cout << "Aircraft hovering at " << currentHeight.altitude << "m!\n";
-  }
-
-  // Cleanup
-  if (!vehicle->isM100() && !vehicle->isLegacyM600())
-  {
-    ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
-    if (ACK::getError(ack))
-    {
-      std::cout
-        << "Error unsubscribing; please restart the drone/FC to get back "
-           "to a clean state.\n";
+        while (vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>() !=
+                   VehicleStatus::FlightStatus::ON_GROUND &&
+               vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
+                   VehicleStatus::DisplayMode::MODE_ENGINE_START &&
+               motorsNotStarted < timeoutCycles)
+        {
+            motorsNotStarted++;
+            usleep(100000);
+        }
+        if (motorsNotStarted == timeoutCycles)
+        {
+            std::cout << "Takeoff failed. Motors are not spinning." << std::endl;
+            // Cleanup
+            if (!vehicle->isM100() && !vehicle->isLegacyM600())
+            {
+                vehicle->subscribe->removePackage(0, timeout);
+            }
+            return false;
+        }
+        else
+        {
+            std::cout << "Motors spinning...\n";
+        }
     }
-  }
-
-  return true;
+    else if (vehicle->isLegacyM600())
+    {
+        while ((vehicle->broadcast->getStatus().flight <
+                DJI::OSDK::VehicleStatus::FlightStatus::ON_GROUND) &&
+               motorsNotStarted < timeoutCycles)
+        {
+            motorsNotStarted++;
+            usleep(100000);
+        }
+        if (motorsNotStarted < timeoutCycles)
+        {
+            std::cout << "Successful TakeOff!" << std::endl;
+        }
+    }
+    else // M100
+    {
+        while ((vehicle->broadcast->getStatus().flight <
+                DJI::OSDK::VehicleStatus::M100FlightStatus::TAKEOFF) &&
+               motorsNotStarted < timeoutCycles)
+        {
+            motorsNotStarted++;
+            usleep(100000);
+        }
+        if (motorsNotStarted < timeoutCycles)
+        {
+            std::cout << "Successful TakeOff!" << std::endl;
+        }
+    }
+    // Second check: In air
+    int stillOnGround = 0;
+    timeoutCycles = 110;
+    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    {
+        while (vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>() !=
+                   VehicleStatus::FlightStatus::IN_AIR &&
+               (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
+                    VehicleStatus::DisplayMode::MODE_ASSISTED_TAKEOFF ||
+                vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
+                    VehicleStatus::DisplayMode::MODE_AUTO_TAKEOFF) &&
+               stillOnGround < timeoutCycles)
+        {
+            stillOnGround++;
+            usleep(100000);
+        }
+        if (stillOnGround == timeoutCycles)
+        {
+            std::cout << "Takeoff failed. Aircraft is still on the ground, but the "
+                         "motors are spinning."
+                      << std::endl;
+            // Cleanup
+            if (!vehicle->isM100() && !vehicle->isLegacyM600())
+            {
+                vehicle->subscribe->removePackage(0, timeout);
+            }
+            return false;
+        }
+        else
+        {
+            std::cout << "Ascending...\n";
+        }
+    }
+    else if (vehicle->isLegacyM600())
+    {
+        while ((vehicle->broadcast->getStatus().flight <
+                DJI::OSDK::VehicleStatus::FlightStatus::IN_AIR) &&
+               stillOnGround < timeoutCycles)
+        {
+            stillOnGround++;
+            usleep(100000);
+        }
+        if (stillOnGround < timeoutCycles)
+        {
+            std::cout << "Aircraft in air!" << std::endl;
+        }
+    }
+    else // M100
+    {
+        while ((vehicle->broadcast->getStatus().flight !=
+                DJI::OSDK::VehicleStatus::M100FlightStatus::IN_AIR_STANDBY) &&
+               stillOnGround < timeoutCycles)
+        {
+            stillOnGround++;
+            usleep(100000);
+        }
+        if (stillOnGround < timeoutCycles)
+        {
+            std::cout << "Aircraft in air!" << std::endl;
+        }
+    }
+    // Final check: Finished takeoff
+    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    {
+        while (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() ==
+                   VehicleStatus::DisplayMode::MODE_ASSISTED_TAKEOFF ||
+               vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() ==
+                   VehicleStatus::DisplayMode::MODE_AUTO_TAKEOFF)
+        {
+            sleep(1);
+        }
+        if (!vehicle->isM100() && !vehicle->isLegacyM600())
+        {
+            if (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
+                    VehicleStatus::DisplayMode::MODE_P_GPS ||
+                vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
+                    VehicleStatus::DisplayMode::MODE_ATTITUDE)
+            {
+                std::cout << "Successful takeoff!\n";
+            }
+            else
+            {
+                std::cout
+                    << "Takeoff finished, but the aircraft is in an unexpected mode. "
+                       "Please connect DJI GO.\n";
+                vehicle->subscribe->removePackage(0, timeout);
+                return false;
+            }
+        }
+    }
+    else
+    {
+        float32_t delta;
+        Telemetry::GlobalPosition currentHeight;
+        Telemetry::GlobalPosition deltaHeight =
+            vehicle->broadcast->getGlobalPosition();
+        do
+        {
+            sleep(4);
+            currentHeight = vehicle->broadcast->getGlobalPosition();
+            delta = fabs(currentHeight.altitude - deltaHeight.altitude);
+            deltaHeight.altitude = currentHeight.altitude;
+        } while (delta >= 0.009);
+        std::cout << "Aircraft hovering at " << currentHeight.altitude << "m!\n";
+    }
+    // Cleanup
+    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    {
+        ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
+        if (ACK::getError(ack))
+        {
+            std::cout
+                << "Error unsubscribing; please restart the drone/FC to get back "
+                   "to a clean state.\n";
+        }
+    }
+    return true;
 }
 
-bool
-DroneFlightControlTask::monitoredLanding(Vehicle* vehicle, int timeout)
+bool DroneFlightControlTask::monitoredLanding(Vehicle *vehicle, int timeout)
 {
-  char func[50];
-  int  pkgIndex;
+    char func[50];
+    int pkgIndex;
 
-  if (!vehicle->isM100() && !vehicle->isLegacyM600())
-  {
-    // Telemetry: Verify the subscription
-    ACK::ErrorCode subscribeStatus;
-    subscribeStatus = vehicle->subscribe->verify(timeout);
-    if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-    {
-      ACK::getErrorCodeMessage(subscribeStatus, func);
-      return false;
-    }
-
-    // Telemetry: Subscribe to flight status and mode at freq 10 Hz
-    pkgIndex                  = 0;
-    int       freq            = 10;
-    TopicName topicList10Hz[] = { TOPIC_STATUS_FLIGHT,
-                                  TOPIC_STATUS_DISPLAYMODE };
-    int  numTopic        = sizeof(topicList10Hz) / sizeof(topicList10Hz[0]);
-    bool enableTimestamp = false;
-
-    bool pkgStatus = vehicle->subscribe->initPackageFromTopicList(
-      pkgIndex, numTopic, topicList10Hz, enableTimestamp, freq);
-    if (!(pkgStatus))
-    {
-      return pkgStatus;
-    }
-    subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, timeout);
-    if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-    {
-      ACK::getErrorCodeMessage(subscribeStatus, func);
-      // Cleanup before return
-      vehicle->subscribe->removePackage(pkgIndex, timeout);
-      return false;
-    }
-  }
-
-  // Start landing
-  ACK::ErrorCode landingStatus = vehicle->control->land(timeout);
-  if (ACK::getError(landingStatus) != ACK::SUCCESS)
-  {
-    ACK::getErrorCodeMessage(landingStatus, func);
-    return false;
-  }
-
-  // First check: Landing started
-  int landingNotStarted = 0;
-  int timeoutCycles     = 20;
-
-  if (!vehicle->isM100() && !vehicle->isLegacyM600())
-  {
-    while (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-             VehicleStatus::DisplayMode::MODE_AUTO_LANDING &&
-           landingNotStarted < timeoutCycles)
-    {
-      landingNotStarted++;
-      usleep(100000);
-    }
-  }
-  else if (vehicle->isM100())
-  {
-    while (vehicle->broadcast->getStatus().flight !=
-             DJI::OSDK::VehicleStatus::M100FlightStatus::LANDING &&
-           landingNotStarted < timeoutCycles)
-    {
-      landingNotStarted++;
-      usleep(100000);
-    }
-  }
-
-  if (landingNotStarted == timeoutCycles)
-  {
-    std::cout << "Landing failed. Aircraft is still in the air." << std::endl;
     if (!vehicle->isM100() && !vehicle->isLegacyM600())
     {
-      // Cleanup before return
-      ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
-      if (ACK::getError(ack)) {
-        std::cout << "Error unsubscribing; please restart the drone/FC to get "
-                     "back to a clean state.\n";
-      }
-    }
-    return false;
-  }
-  else
-  {
-    std::cout << "Landing...\n";
-  }
+        // Telemetry: Verify the subscription
+        ACK::ErrorCode subscribeStatus;
+        subscribeStatus = vehicle->subscribe->verify(timeout);
+        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+        {
+            ACK::getErrorCodeMessage(subscribeStatus, func);
+            return false;
+        }
 
-  // Second check: Finished landing
-  if (!vehicle->isM100() && !vehicle->isLegacyM600())
-  {
-    while (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() ==
-             VehicleStatus::DisplayMode::MODE_AUTO_LANDING &&
-           vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>() ==
-             VehicleStatus::FlightStatus::IN_AIR)
-    {
-      sleep(1);
+        // Telemetry: Subscribe to flight status and mode at freq 10 Hz
+        pkgIndex = 0;
+        int freq = 10;
+        TopicName topicList10Hz[] = {TOPIC_STATUS_FLIGHT,
+                                     TOPIC_STATUS_DISPLAYMODE};
+        int numTopic = sizeof(topicList10Hz) / sizeof(topicList10Hz[0]);
+        bool enableTimestamp = false;
+
+        bool pkgStatus = vehicle->subscribe->initPackageFromTopicList(
+            pkgIndex, numTopic, topicList10Hz, enableTimestamp, freq);
+        if (!(pkgStatus))
+        {
+            return pkgStatus;
+        }
+        subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, timeout);
+        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+        {
+            ACK::getErrorCodeMessage(subscribeStatus, func);
+            // Cleanup before return
+            vehicle->subscribe->removePackage(pkgIndex, timeout);
+            return false;
+        }
     }
 
-    if (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-          VehicleStatus::DisplayMode::MODE_P_GPS ||
-        vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-          VehicleStatus::DisplayMode::MODE_ATTITUDE)
+    // Start landing
+    ACK::ErrorCode landingStatus = vehicle->control->land(timeout);
+    if (ACK::getError(landingStatus) != ACK::SUCCESS)
     {
-      std::cout << "Successful landing!\n";
+        ACK::getErrorCodeMessage(landingStatus, func);
+        return false;
+    }
+
+    // First check: Landing started
+    int landingNotStarted = 0;
+    int timeoutCycles = 20;
+
+    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    {
+        while (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
+                   VehicleStatus::DisplayMode::MODE_AUTO_LANDING &&
+               landingNotStarted < timeoutCycles)
+        {
+            landingNotStarted++;
+            usleep(100000);
+        }
+    }
+    else if (vehicle->isM100())
+    {
+        while (vehicle->broadcast->getStatus().flight !=
+                   DJI::OSDK::VehicleStatus::M100FlightStatus::LANDING &&
+               landingNotStarted < timeoutCycles)
+        {
+            landingNotStarted++;
+            usleep(100000);
+        }
+    }
+
+    if (landingNotStarted == timeoutCycles)
+    {
+        std::cout << "Landing failed. Aircraft is still in the air." << std::endl;
+        if (!vehicle->isM100() && !vehicle->isLegacyM600())
+        {
+            // Cleanup before return
+            ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
+            if (ACK::getError(ack))
+            {
+                std::cout << "Error unsubscribing; please restart the drone/FC to get "
+                             "back to a clean state.\n";
+            }
+        }
+        return false;
     }
     else
     {
-      std::cout
-        << "Landing finished, but the aircraft is in an unexpected mode. "
-           "Please connect DJI GO.\n";
-      ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
-      if (ACK::getError(ack))
-      {
-        std::cout << "Error unsubscribing; please restart the drone/FC to get "
-                     "back to a clean state.\n";
-      }
-      return false;
-    }
-  }
-  else if (vehicle->isLegacyM600())
-  {
-    while (vehicle->broadcast->getStatus().flight >
-           DJI::OSDK::VehicleStatus::FlightStatus::STOPED)
-    {
-      sleep(1);
+        std::cout << "Landing...\n";
     }
 
-    Telemetry::GlobalPosition gp;
-    do
+    // Second check: Finished landing
+    if (!vehicle->isM100() && !vehicle->isLegacyM600())
     {
-      sleep(2);
-      gp = vehicle->broadcast->getGlobalPosition();
-    } while (gp.altitude != 0);
+        while (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() ==
+                   VehicleStatus::DisplayMode::MODE_AUTO_LANDING &&
+               vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>() ==
+                   VehicleStatus::FlightStatus::IN_AIR)
+        {
+            sleep(1);
+        }
 
-    if (gp.altitude != 0)
-    {
-      std::cout
-        << "Landing finished, but the aircraft is in an unexpected mode. "
-           "Please connect DJI GO.\n";
-      return false;
+        if (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
+                VehicleStatus::DisplayMode::MODE_P_GPS ||
+            vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
+                VehicleStatus::DisplayMode::MODE_ATTITUDE)
+        {
+            std::cout << "Successful landing!\n";
+        }
+        else
+        {
+            std::cout
+                << "Landing finished, but the aircraft is in an unexpected mode. "
+                   "Please connect DJI GO.\n";
+            ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
+            if (ACK::getError(ack))
+            {
+                std::cout << "Error unsubscribing; please restart the drone/FC to get "
+                             "back to a clean state.\n";
+            }
+            return false;
+        }
     }
-    else
+    else if (vehicle->isLegacyM600())
     {
-      std::cout << "Successful landing!\n";
+        while (vehicle->broadcast->getStatus().flight >
+               DJI::OSDK::VehicleStatus::FlightStatus::STOPED)
+        {
+            sleep(1);
+        }
+
+        Telemetry::GlobalPosition gp;
+        do
+        {
+            sleep(2);
+            gp = vehicle->broadcast->getGlobalPosition();
+        } while (gp.altitude != 0);
+
+        if (gp.altitude != 0)
+        {
+            std::cout
+                << "Landing finished, but the aircraft is in an unexpected mode. "
+                   "Please connect DJI GO.\n";
+            return false;
+        }
+        else
+        {
+            std::cout << "Successful landing!\n";
+        }
     }
-  }
-  else // M100
-  {
-    while (vehicle->broadcast->getStatus().flight ==
-           DJI::OSDK::VehicleStatus::M100FlightStatus::FINISHING_LANDING)
+    else // M100
     {
-      sleep(1);
+        while (vehicle->broadcast->getStatus().flight ==
+               DJI::OSDK::VehicleStatus::M100FlightStatus::FINISHING_LANDING)
+        {
+            sleep(1);
+        }
+
+        Telemetry::GlobalPosition gp;
+        do
+        {
+            sleep(2);
+            gp = vehicle->broadcast->getGlobalPosition();
+        } while (gp.altitude != 0);
+
+        if (gp.altitude != 0)
+        {
+            std::cout
+                << "Landing finished, but the aircraft is in an unexpected mode. "
+                   "Please connect DJI GO.\n";
+            return false;
+        }
+        else
+        {
+            std::cout << "Successful landing!\n";
+        }
     }
 
-    Telemetry::GlobalPosition gp;
-    do
+    // Cleanup
+    if (!vehicle->isM100() && !vehicle->isLegacyM600())
     {
-      sleep(2);
-      gp = vehicle->broadcast->getGlobalPosition();
-    } while (gp.altitude != 0);
-
-    if (gp.altitude != 0)
-    {
-      std::cout
-        << "Landing finished, but the aircraft is in an unexpected mode. "
-           "Please connect DJI GO.\n";
-      return false;
+        ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
+        if (ACK::getError(ack))
+        {
+            std::cout
+                << "Error unsubscribing; please restart the drone/FC to get back "
+                   "to a clean state.\n";
+        }
     }
-    else
-    {
-      std::cout << "Successful landing!\n";
-    }
-  }
 
-  // Cleanup
-  if (!vehicle->isM100() && !vehicle->isLegacyM600())
-  {
-    ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
-    if (ACK::getError(ack))
-    {
-      std::cout
-        << "Error unsubscribing; please restart the drone/FC to get back "
-           "to a clean state.\n";
-    }
-  }
-
-  return true;
+    return true;
 }
 
 E_OsdkStat
@@ -605,47 +591,53 @@ DroneFlightControlTask::OsdkLinux_UartInit(const char *port,
                                            const int baudrate,
                                            T_HalObj *obj)
 {
-    int st_baud[] = {B4800,   B9600,   B19200,  B38400,   B57600,   B115200,
-                   B230400, B460800, B921600, B1000000, B1152000, B3000000};
-    int std_rate[] = {4800,   9600,   19200,  38400,   57600,   115200,
+    int st_baud[] = {B4800, B9600, B19200, B38400, B57600, B115200,
+                     B230400, B460800, B921600, B1000000, B1152000, B3000000};
+    int std_rate[] = {4800, 9600, 19200, 38400, 57600, 115200,
                       230400, 460800, 921600, 1000000, 1152000, 3000000};
-    
+
     struct termios options;
     E_OsdkStat OsdkStat = OSDK_STAT_OK;
     long unsigned int i = 0;
-    
-    if (!port) {
+
+    if (!port)
+    {
         return OSDK_STAT_ERR_PARAM;
     }
-    
+
     obj->uartObject.fd = open(port, O_RDWR | O_NOCTTY);
-    if (obj->uartObject.fd == -1) {
+    if (obj->uartObject.fd == -1)
+    {
         OsdkStat = OSDK_STAT_ERR;
         return OsdkStat;
     }
-    
-    if (tcgetattr(obj->uartObject.fd, &options) != 0) {
-        close(obj->uartObject.fd);
-        OsdkStat = OSDK_STAT_ERR;
-    
-        return OsdkStat;
-    }
-    
-    for (i = 0; i < sizeof(std_rate) / sizeof(int); ++i) {
-      if (std_rate[i] == baudrate) {
-        /* set standard baudrate */
-        cfsetispeed(&options, st_baud[i]);
-        cfsetospeed(&options, st_baud[i]);
-        break;
-      }
-    }
-    if (i == sizeof(std_rate) / sizeof(int)) {
+
+    if (tcgetattr(obj->uartObject.fd, &options) != 0)
+    {
         close(obj->uartObject.fd);
         OsdkStat = OSDK_STAT_ERR;
 
         return OsdkStat;
     }
-    
+
+    for (i = 0; i < sizeof(std_rate) / sizeof(int); ++i)
+    {
+        if (std_rate[i] == baudrate)
+        {
+            /* set standard baudrate */
+            cfsetispeed(&options, st_baud[i]);
+            cfsetospeed(&options, st_baud[i]);
+            break;
+        }
+    }
+    if (i == sizeof(std_rate) / sizeof(int))
+    {
+        close(obj->uartObject.fd);
+        OsdkStat = OSDK_STAT_ERR;
+
+        return OsdkStat;
+    }
+
     options.c_cflag |= CLOCAL;
     options.c_cflag |= CREAD;
     options.c_cflag &= ~CRTSCTS;
@@ -659,13 +651,14 @@ DroneFlightControlTask::OsdkLinux_UartInit(const char *port,
     options.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
     options.c_cc[VTIME] = 0;
     options.c_cc[VMIN] = 0;
-    
+
     tcflush(obj->uartObject.fd, TCIFLUSH);
-    
-    if (tcsetattr(obj->uartObject.fd, TCSANOW, &options) != 0) {
+
+    if (tcsetattr(obj->uartObject.fd, TCSANOW, &options) != 0)
+    {
         close(obj->uartObject.fd);
         OsdkStat = OSDK_STAT_ERR;
-    
+
         return OsdkStat;
     }
 
@@ -678,14 +671,18 @@ DroneFlightControlTask::OsdkLinux_UartSendData(const T_HalObj *obj,
 {
     uint32_t realLen;
 
-    if ((obj == NULL) || (obj->uartObject.fd == -1)) {
+    if ((obj == NULL) || (obj->uartObject.fd == -1))
+    {
         return OSDK_STAT_ERR;
     }
 
     realLen = write(obj->uartObject.fd, pBuf, bufLen);
-    if (realLen == bufLen) {
+    if (realLen == bufLen)
+    {
         return OSDK_STAT_OK;
-    } else {
+    }
+    else
+    {
         return OSDK_STAT_ERR;
     }
 }
@@ -694,24 +691,29 @@ DroneFlightControlTask::OsdkLinux_UartReadData(const T_HalObj *obj,
                                                uint8_t *pBuf,
                                                uint32_t *bufLen)
 {
-    if ((obj == NULL) || (obj->uartObject.fd == -1)) {
+    if ((obj == NULL) || (obj->uartObject.fd == -1))
+    {
         return OSDK_STAT_ERR;
     }
     ssize_t readLen = read(obj->uartObject.fd, pBuf, 1024);
-    if (readLen < 0) {
+    if (readLen < 0)
+    {
         *bufLen = 0;
         printf("errno = %d\n", errno);
         perror("OsdkLinux_UartReadData");
-    } else {
+    }
+    else
+    {
         *bufLen = readLen;
     }
 
     return OSDK_STAT_OK;
-}                                
+}
 E_OsdkStat
 DroneFlightControlTask::OsdkLinux_UartClose(T_HalObj *obj)
 {
-    if ((obj == NULL) || (obj->uartObject.fd == -1)) {
+    if ((obj == NULL) || (obj->uartObject.fd == -1))
+    {
         return OSDK_STAT_ERR;
     }
     close(obj->uartObject.fd);
@@ -727,7 +729,8 @@ DroneFlightControlTask::OsdkLinux_TaskCreate(
     int result;
     // *task = malloc(sizeof(pthread_t));
     result = pthread_create((pthread_t *)task, NULL, taskFunc, arg);
-    if (result != 0) {
+    if (result != 0)
+    {
         return OSDK_STAT_ERR;
     }
     return OSDK_STAT_OK;
@@ -752,7 +755,8 @@ DroneFlightControlTask::OsdkLinux_MutexCreate(T_OsdkMutexHandle *mutex)
     int result;
     // *mutex = malloc(sizeof(pthread_mutex_t));
     result = pthread_mutex_init((pthread_mutex_t *)mutex, NULL);
-    if (result != 0) {
+    if (result != 0)
+    {
         return OSDK_STAT_ERR;
     }
     return OSDK_STAT_OK;
@@ -762,7 +766,8 @@ DroneFlightControlTask::OsdkLinux_MutexDestroy(T_OsdkMutexHandle mutex)
 {
     int result;
     result = pthread_mutex_destroy((pthread_mutex_t *)mutex);
-    if (result != 0) {
+    if (result != 0)
+    {
         return OSDK_STAT_ERR;
     }
     return OSDK_STAT_OK;
@@ -772,7 +777,8 @@ DroneFlightControlTask::OsdkLinux_MutexLock(T_OsdkMutexHandle mutex)
 {
     int result;
     result = pthread_mutex_lock((pthread_mutex_t *)mutex);
-    if (result != 0) {
+    if (result != 0)
+    {
         return OSDK_STAT_ERR;
     }
     return OSDK_STAT_OK;
@@ -781,7 +787,8 @@ E_OsdkStat
 DroneFlightControlTask::OsdkLinux_MutexUnlock(T_OsdkMutexHandle mutex)
 {
     int result = pthread_mutex_unlock((pthread_mutex_t *)mutex);
-    if (result != 0) {
+    if (result != 0)
+    {
         return OSDK_STAT_ERR;
     }
     return OSDK_STAT_OK;
@@ -794,7 +801,8 @@ DroneFlightControlTask::OsdkLinux_SemaphoreCreate(
     int result;
     // *semaphore = malloc(sizeof(sem_t));
     result = sem_init((sem_t *)semaphore, 0, (unsigned int)initValue);
-    if (result != 0) {
+    if (result != 0)
+    {
         return OSDK_STAT_ERR;
     }
     return OSDK_STAT_OK;
@@ -805,7 +813,8 @@ DroneFlightControlTask::OsdkLinux_SemaphoreDestroy(
 {
     int result;
     result = sem_destroy((sem_t *)semaphore);
-    if (result != 0) {
+    if (result != 0)
+    {
         return OSDK_STAT_ERR;
     }
     return OSDK_STAT_OK;
@@ -816,7 +825,8 @@ DroneFlightControlTask::OsdkLinux_SemaphoreWait(
 {
     int result;
     result = sem_wait((sem_t *)semaphore);
-    if (result != 0) {
+    if (result != 0)
+    {
         return OSDK_STAT_ERR;
     }
     return OSDK_STAT_OK;
@@ -831,14 +841,16 @@ DroneFlightControlTask::OsdkLinux_SemaphoreTimedWait(
     struct timeval systemTime;
     gettimeofday(&systemTime, NULL);
     systemTime.tv_usec += waitTime * 1000;
-    if (systemTime.tv_usec >= 1000000) {
+    if (systemTime.tv_usec >= 1000000)
+    {
         systemTime.tv_sec += systemTime.tv_usec / 1000000;
         systemTime.tv_usec %= 1000000;
     }
     semaphoreWaitTime.tv_sec = systemTime.tv_sec;
     semaphoreWaitTime.tv_nsec = systemTime.tv_usec * 1000;
     result = sem_timedwait((sem_t *)semaphore, &semaphoreWaitTime);
-    if (result != 0) {
+    if (result != 0)
+    {
         return OSDK_STAT_ERR;
     }
     return OSDK_STAT_OK;
@@ -849,8 +861,9 @@ DroneFlightControlTask::OsdkLinux_SemaphorePost(
 {
     int result;
     result = sem_post((sem_t *)semaphore);
-    if (result != 0) {
-      return OSDK_STAT_ERR;
+    if (result != 0)
+    {
+        return OSDK_STAT_ERR;
     }
     return OSDK_STAT_OK;
 }
@@ -865,9 +878,9 @@ DroneFlightControlTask::OsdkLinux_GetTimeMs(uint32_t *ms)
 }
 void *DroneFlightControlTask::OsdkLinux_Malloc(uint32_t size)
 {
-  return malloc(size);
+    return malloc(size);
 }
 void DroneFlightControlTask::OsdkLinux_Free(void *ptr)
 {
-  free(ptr);
+    free(ptr);
 }
