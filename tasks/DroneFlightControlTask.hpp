@@ -5,11 +5,12 @@
 
 #include "drone_dji_sdk/DroneFlightControlTaskBase.hpp"
 #include <dji_setup_helpers.hpp>
-#include "dji_linker.hpp"
+#include "dji_telemetry.hpp"
 #include "dji_vehicle.hpp"
 #include "dji_status.hpp"
-#include "osdk_typedef.h"
+#include "dji_linker.hpp"
 #include "osdk_platform.h"
+#include "osdk_typedef.h"
 #include <pthread.h>
 #include <cmath>
 #include <fstream>
@@ -26,6 +27,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+
+#define C_EARTH (double)6378137.0
+#define DEG2RAD 0.01745329252
 
 namespace drone_dji_sdk{
 
@@ -120,6 +124,21 @@ namespace drone_dji_sdk{
 
     private:
 
+        /** Monitored Takeoff
+         * This implementation of takeoff  with monitoring makes sure your aircraft
+         * actually took off and only returns when takeoff is complete.
+         * Use unless you want to do other stuff during takeoff - this will block
+         * the main thread.
+         */
+        bool monitoredTakeoff(DJI::OSDK::Vehicle* vehiclePtr, int timeout = 1);
+
+        /** Monitored Landing (Blocking API call). 
+         * Return status as well as ack.
+         * This version of takeoff makes sure your aircraft actually took off
+         * and only returns when takeoff is complete.
+         */
+        bool monitoredLanding(DJI::OSDK::Vehicle* vehiclePtr, int timeout = 1);
+
         uint32_t mFunctionTimeout;
         Vehicle::ActivateData mActivateData;
         DJI::OSDK::Setup mSetup;
@@ -178,6 +197,7 @@ namespace drone_dji_sdk{
         *OsdkLinux_Malloc(uint32_t size);
         static void
         OsdkLinux_Free(void *ptr);
+
     };
 }
 #endif
