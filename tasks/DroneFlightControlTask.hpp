@@ -7,13 +7,18 @@
 #include <dji_setup_helpers.hpp>
 #include "dji_linker.hpp"
 #include "dji_vehicle.hpp"
+#include "dji_status.hpp"
+#include "osdk_typedef.h"
+#include "osdk_platform.h"
 #include <pthread.h>
+#include <cmath>
+#include <fstream>
+#include <iostream>
 #include <semaphore.h>
 #include "stdint.h"
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdexcept>
 #include <sys/time.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
@@ -21,9 +26,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include "osdk_typedef.h"
-#include "osdk_platform.h"
-
 
 namespace drone_dji_sdk{
 

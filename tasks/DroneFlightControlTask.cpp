@@ -30,6 +30,8 @@ bool DroneFlightControlTask::startHook()
     if (! DroneFlightControlTaskBase::startHook())
         return false;
 
+    // AdvancedSensing = false
+    mSetup = Setup(false);
     mFunctionTimeout = 1; // second
     setupEnvironment();
     initVehicle();
@@ -123,12 +125,16 @@ bool DroneFlightControlTask::initVehicle()
     if (!mSetup.linker)
     {
         DERROR("Linker get failed.");
+        // if (mSetup.vehicle) delete (mSetup.vehicle);
+        mSetup.vehicle = nullptr;
         return false;
     }
     mSetup.vehicle = new Vehicle(mSetup.linker);
     if (!mSetup.vehicle)
     {
         DERROR("Vehicle create failed.");
+        if (mSetup.vehicle) delete (mSetup.vehicle);
+        mSetup.vehicle = nullptr;
         return false;
     }
     // Activate
@@ -141,6 +147,8 @@ bool DroneFlightControlTask::initVehicle()
     if (ACK::getError(ack))
     {
         ACK::getErrorCodeMessage(ack, __func__);
+        if (mSetup.vehicle) delete (mSetup.vehicle);
+        mSetup.vehicle = nullptr;
         return false;
     }
     if (!mSetup.vehicle->isM300()) {
@@ -168,7 +176,7 @@ DroneFlightControlTask::OsdkLinux_UartInit(const char *port,
     
     struct termios options;
     E_OsdkStat OsdkStat = OSDK_STAT_OK;
-    int i = 0;
+    long unsigned int i = 0;
     
     if (!port) {
         return OSDK_STAT_ERR_PARAM;
@@ -177,14 +185,14 @@ DroneFlightControlTask::OsdkLinux_UartInit(const char *port,
     obj->uartObject.fd = open(port, O_RDWR | O_NOCTTY);
     if (obj->uartObject.fd == -1) {
         OsdkStat = OSDK_STAT_ERR;
-        goto out;
+        return OsdkStat;
     }
     
     if (tcgetattr(obj->uartObject.fd, &options) != 0) {
         close(obj->uartObject.fd);
         OsdkStat = OSDK_STAT_ERR;
     
-        goto out;
+        return OsdkStat;
     }
     
     for (i = 0; i < sizeof(std_rate) / sizeof(int); ++i) {
@@ -199,7 +207,7 @@ DroneFlightControlTask::OsdkLinux_UartInit(const char *port,
         close(obj->uartObject.fd);
         OsdkStat = OSDK_STAT_ERR;
 
-        goto out;
+        return OsdkStat;
     }
     
     options.c_cflag |= CLOCAL;
@@ -222,9 +230,8 @@ DroneFlightControlTask::OsdkLinux_UartInit(const char *port,
         close(obj->uartObject.fd);
         OsdkStat = OSDK_STAT_ERR;
     
-        goto out;
+        return OsdkStat;
     }
-    out:
 
     return OsdkStat;
 }
@@ -233,7 +240,7 @@ DroneFlightControlTask::OsdkLinux_UartSendData(const T_HalObj *obj,
                                                const uint8_t *pBuf,
                                                uint32_t bufLen)
 {
-    int32_t realLen;
+    uint32_t realLen;
 
     if ((obj == NULL) || (obj->uartObject.fd == -1)) {
         return OSDK_STAT_ERR;
