@@ -139,6 +139,31 @@ namespace drone_dji_sdk{
          */
         bool monitoredLanding(DJI::OSDK::Vehicle* vehiclePtr, int timeout = 1);
 
+        /** Position Control. Allows you to set an offset from your current
+         * location. The aircraft will move to that position and stay there.
+         * Typical use would be as a building block in an outer loop that does not
+         * require many fast changes, perhaps a few-waypoint trajectory. For smoother
+         * transition and response you should convert your trajectory to attitude
+         * setpoints and use attitude control or convert to velocity setpoints
+         * and use velocity control.
+         */
+        bool moveByPositionOffset(DJI::OSDK::Vehicle *vehicle, float xOffsetDesired,
+                                  float yOffsetDesired, float zOffsetDesired,
+                                  float yawDesired, float posThresholdInM = 0.8,
+                                  float yawThresholdInDeg = 1.0);
+
+        // Helper Functions
+
+        /** Very simple calculation of local NED offset between two pairs of GPS
+         * coordinates.
+         * Accurate when distances are small.
+         */
+        void localOffsetFromGpsOffset(DJI::OSDK::Vehicle*             vehicle,
+                                      DJI::OSDK::Telemetry::Vector3f& deltaNed,
+                                      void* target, void* origin);
+        DJI::OSDK::Telemetry::Vector3f toEulerAngle(void* quaternionData);
+        bool startGlobalPositionBroadcast(DJI::OSDK::Vehicle* vehicle);
+
         uint32_t mFunctionTimeout;
         Vehicle::ActivateData mActivateData;
         DJI::OSDK::Setup mSetup;
