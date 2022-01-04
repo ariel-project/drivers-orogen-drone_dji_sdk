@@ -23,22 +23,35 @@ bool DroneFlightControlTask::configureHook()
 {
     if (!DroneFlightControlTaskBase::configureHook())
         return false;
+    // AdvancedSensing = false
+    mSetup = Setup(false);
+    if (mSetup.vehicle == NULL)
+    {
+        std::cout << "Vehicle not initialized, exiting.\n";
+    }
+    mFunctionTimeout = 1; // second
+    setupEnvironment();
+    initVehicle();
+    // Obtain Control Authority
+    mSetup.vehicle->flightController->obtainJoystickCtrlAuthorityAsync(obtainJoystickCtrlAuthorityCB,
+                                                                       nullptr,
+                                                                       mFunctionTimeout,
+                                                                       2);
+    checkTelemetry();
+
     return true;
 }
+
 bool DroneFlightControlTask::startHook()
 {
     if (!DroneFlightControlTaskBase::startHook())
         return false;
-
-    // AdvancedSensing = false
-    mSetup = Setup(false);
-    mFunctionTimeout = 1; // second
-    setupEnvironment();
-    initVehicle();
     return true;
 }
+
 void DroneFlightControlTask::updateHook()
 {
+
     DroneFlightControlTaskBase::updateHook();
 }
 void DroneFlightControlTask::errorHook()
@@ -47,6 +60,10 @@ void DroneFlightControlTask::errorHook()
 }
 void DroneFlightControlTask::stopHook()
 {
+    mSetup.vehicle->flightController->releaseJoystickCtrlAuthorityAsync(releaseJoystickCtrlAuthorityCB,
+                                                                        nullptr,
+                                                                        mFunctionTimeout,
+                                                                        2);
     DroneFlightControlTaskBase::stopHook();
 }
 void DroneFlightControlTask::cleanupHook()
@@ -163,21 +180,22 @@ bool DroneFlightControlTask::initVehicle()
     return true;
 }
 
-bool DroneFlightControlTask::monitoredTakeoff(Vehicle *vehicle, int timeout)
+bool DroneFlightControlTask::checkTelemetry()
 {
     char func[50];
     int pkgIndex;
 
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    if (!mSetup.vehicle->isM100() && !mSetup.vehicle->isLegacyM600())
     {
         // Telemetry: Verify the subscription
         ACK::ErrorCode subscribeStatus;
-        subscribeStatus = vehicle->subscribe->verify(timeout);
+        subscribeStatus = mSetup.vehicle->subscribe->verify(mFunctionTimeout);
         if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
         {
             ACK::getErrorCodeMessage(subscribeStatus, func);
             return false;
         }
+
         // Telemetry: Subscribe to flight status and mode at freq 10 Hz
         pkgIndex = 0;
         int freq = 10;
@@ -185,21 +203,63 @@ bool DroneFlightControlTask::monitoredTakeoff(Vehicle *vehicle, int timeout)
                                      TOPIC_STATUS_DISPLAYMODE};
         int numTopic = sizeof(topicList10Hz) / sizeof(topicList10Hz[0]);
         bool enableTimestamp = false;
-        bool pkgStatus = vehicle->subscribe->initPackageFromTopicList(
+
+        bool pkgStatus = mSetup.vehicle->subscribe->initPackageFromTopicList(
             pkgIndex, numTopic, topicList10Hz, enableTimestamp, freq);
         if (!(pkgStatus))
         {
             return pkgStatus;
         }
-        subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, timeout);
+        subscribeStatus = mSetup.vehicle->subscribe->startPackage(pkgIndex, mFunctionTimeout);
         if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
         {
             ACK::getErrorCodeMessage(subscribeStatus, func);
             // Cleanup before return
-            vehicle->subscribe->removePackage(pkgIndex, timeout);
+            mSetup.vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
+            return false;
+        }
+
+        // Telemetry: Subscribe to quaternion, fused lat/lon and altitude at freq 50
+        // Hz
+        freq = 50;
+        TopicName topicList50Hz[] = {TOPIC_QUATERNION, TOPIC_GPS_FUSED};
+        numTopic = sizeof(topicList50Hz) / sizeof(topicList50Hz[0]);
+        enableTimestamp = false;
+
+        pkgStatus = mSetup.vehicle->subscribe->initPackageFromTopicList(
+            pkgIndex, numTopic, topicList50Hz, enableTimestamp, freq);
+        if (!(pkgStatus))
+        {
+            return pkgStatus;
+        }
+        subscribeStatus =
+            mSetup.vehicle->subscribe->startPackage(pkgIndex, mFunctionTimeout);
+        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+        {
+            ACK::getErrorCodeMessage(subscribeStatus, func);
+            // Cleanup before return
+            mSetup.vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
+            return false;
+        }
+
+        // Also, since we don't have a source for relative height through subscription,
+        // start using broadcast height
+        if (!startGlobalPositionBroadcast(mSetup.vehicle))
+        {
+            // Cleanup before return
+            mSetup.vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
             return false;
         }
     }
+    // Wait for data to come in
+    sleep(1);
+    return true;
+}
+
+bool DroneFlightControlTask::monitoredTakeoff(Vehicle *vehicle, int timeout)
+{
+    char func[50];
+    int pkgIndex = 0;
 
     // Start takeoff
     ACK::ErrorCode takeoffStatus = vehicle->control->takeoff(timeout);
@@ -387,42 +447,7 @@ bool DroneFlightControlTask::monitoredTakeoff(Vehicle *vehicle, int timeout)
 bool DroneFlightControlTask::monitoredLanding(Vehicle *vehicle, int timeout)
 {
     char func[50];
-    int pkgIndex;
-
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
-    {
-        // Telemetry: Verify the subscription
-        ACK::ErrorCode subscribeStatus;
-        subscribeStatus = vehicle->subscribe->verify(timeout);
-        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-        {
-            ACK::getErrorCodeMessage(subscribeStatus, func);
-            return false;
-        }
-
-        // Telemetry: Subscribe to flight status and mode at freq 10 Hz
-        pkgIndex = 0;
-        int freq = 10;
-        TopicName topicList10Hz[] = {TOPIC_STATUS_FLIGHT,
-                                     TOPIC_STATUS_DISPLAYMODE};
-        int numTopic = sizeof(topicList10Hz) / sizeof(topicList10Hz[0]);
-        bool enableTimestamp = false;
-
-        bool pkgStatus = vehicle->subscribe->initPackageFromTopicList(
-            pkgIndex, numTopic, topicList10Hz, enableTimestamp, freq);
-        if (!(pkgStatus))
-        {
-            return pkgStatus;
-        }
-        subscribeStatus = vehicle->subscribe->startPackage(pkgIndex, timeout);
-        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-        {
-            ACK::getErrorCodeMessage(subscribeStatus, func);
-            // Cleanup before return
-            vehicle->subscribe->removePackage(pkgIndex, timeout);
-            return false;
-        }
-    }
+    int pkgIndex = 0;
 
     // Start landing
     ACK::ErrorCode landingStatus = vehicle->control->land(timeout);
@@ -590,63 +615,12 @@ bool DroneFlightControlTask::moveByPositionOffset(Vehicle *vehicle,
     // Set timeout: this timeout is the time you allow the drone to take to finish
     // the
     // mission
-    int responseTimeout = 1;
     int timeoutInMilSec = 40000;
     int controlFreqInHz = 50; // Hz
     int cycleTimeInMs = 1000 / controlFreqInHz;
     int outOfControlBoundsTimeLimit = 10 * cycleTimeInMs;  // 10 cycles
     int withinControlBoundsTimeReqmt = 50 * cycleTimeInMs; // 50 cycles
-    int pkgIndex;
-
-    char func[50];
-
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
-    {
-        // Telemetry: Verify the subscription
-        ACK::ErrorCode subscribeStatus;
-        subscribeStatus = vehicle->subscribe->verify(responseTimeout);
-        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-        {
-            ACK::getErrorCodeMessage(subscribeStatus, func);
-            return false;
-        }
-
-        // Telemetry: Subscribe to quaternion, fused lat/lon and altitude at freq 50
-        // Hz
-        pkgIndex = 0;
-        int freq = 50;
-        TopicName topicList50Hz[] = {TOPIC_QUATERNION, TOPIC_GPS_FUSED};
-        int numTopic = sizeof(topicList50Hz) / sizeof(topicList50Hz[0]);
-        bool enableTimestamp = false;
-
-        bool pkgStatus = vehicle->subscribe->initPackageFromTopicList(
-            pkgIndex, numTopic, topicList50Hz, enableTimestamp, freq);
-        if (!(pkgStatus))
-        {
-            return pkgStatus;
-        }
-        subscribeStatus =
-            vehicle->subscribe->startPackage(pkgIndex, responseTimeout);
-        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-        {
-            ACK::getErrorCodeMessage(subscribeStatus, func);
-            // Cleanup before return
-            vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
-            return false;
-        }
-
-        // Also, since we don't have a source for relative height through subscription,
-        // start using broadcast height
-        if (!startGlobalPositionBroadcast(vehicle))
-        {
-            // Cleanup before return
-            vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
-            return false;
-        }
-    }
-
-    // Wait for data to come in
-    sleep(1);
+    int pkgIndex = 0;
 
     // Get data
 
@@ -845,7 +819,7 @@ bool DroneFlightControlTask::moveByPositionOffset(Vehicle *vehicle,
         if (!vehicle->isM100() && !vehicle->isLegacyM600())
         {
             ACK::ErrorCode ack =
-                vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
+                vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
             if (ACK::getError(ack))
             {
                 std::cout << "Error unsubscribing; please restart the drone/FC to get "
@@ -858,7 +832,7 @@ bool DroneFlightControlTask::moveByPositionOffset(Vehicle *vehicle,
     if (!vehicle->isM100() && !vehicle->isLegacyM600())
     {
         ACK::ErrorCode ack =
-            vehicle->subscribe->removePackage(pkgIndex, responseTimeout);
+            vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
         if (ACK::getError(ack))
         {
             std::cout
@@ -973,6 +947,22 @@ bool DroneFlightControlTask::startGlobalPositionBroadcast(Vehicle *vehicle)
     else
     {
         return true;
+    }
+}
+
+void DroneFlightControlTask::obtainJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode, UserData userData)
+{
+    if (errorCode == ErrorCode::FlightControllerErr::SetControlParam::ObtainJoystickCtrlAuthoritySuccess)
+    {
+        DSTATUS("ObtainJoystickCtrlAuthoritySuccess");
+    }
+}
+
+void DroneFlightControlTask::releaseJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode, UserData userData)
+{
+    if (errorCode == ErrorCode::FlightControllerErr::SetControlParam::ReleaseJoystickCtrlAuthoritySuccess)
+    {
+        DSTATUS("ReleaseJoystickCtrlAuthoritySuccess");
     }
 }
 

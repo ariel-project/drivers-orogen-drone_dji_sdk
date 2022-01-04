@@ -158,11 +158,18 @@ namespace drone_dji_sdk{
          * coordinates.
          * Accurate when distances are small.
          */
-        void localOffsetFromGpsOffset(DJI::OSDK::Vehicle*             vehicle,
+        void localOffsetFromGpsOffset(DJI::OSDK::Vehicle* vehicle,
                                       DJI::OSDK::Telemetry::Vector3f& deltaNed,
                                       void* target, void* origin);
         DJI::OSDK::Telemetry::Vector3f toEulerAngle(void* quaternionData);
         bool startGlobalPositionBroadcast(DJI::OSDK::Vehicle* vehicle);
+
+        static void
+        obtainJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
+                                      UserData userData);
+        static void
+        releaseJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
+                                       UserData userData);
 
         uint32_t mFunctionTimeout;
         Vehicle::ActivateData mActivateData;
@@ -170,6 +177,7 @@ namespace drone_dji_sdk{
 
         void setupEnvironment();
         bool initVehicle();
+        bool checkTelemetry();
 
         static E_OsdkStat
         OsdkUser_Console(const uint8_t *data,
