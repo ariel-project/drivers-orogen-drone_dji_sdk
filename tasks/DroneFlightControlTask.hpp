@@ -4,6 +4,7 @@
 #define DRONE_DJI_SDK_DRONEFLIGHTCONTROLTASK_TASK_HPP
 
 #include "drone_dji_sdk/DroneFlightControlTaskBase.hpp"
+#include "drone_dji_sdkTypes.hpp"
 #include <dji_setup_helpers.hpp>
 #include "dji_telemetry.hpp"
 #include "dji_vehicle.hpp"
@@ -28,10 +29,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define C_EARTH (double)6378137.0
-#define DEG2RAD 0.01745329252
-
-namespace drone_dji_sdk{
+namespace drone_dji_sdk
+{
 
     /*! \class DroneFlightControlTask
      * \brief The task context provides and requires services. It uses an ExecutionEngine to perform its functions.
@@ -49,20 +48,19 @@ namespace drone_dji_sdk{
      */
     class DroneFlightControlTask : public DroneFlightControlTaskBase
     {
-	    friend class DroneFlightControlTaskBase;
+        friend class DroneFlightControlTaskBase;
+
     protected:
-
-
     public:
         /** TaskContext constructor for DroneFlightControlTask
          * \param name Name of the task. This name needs to be unique to make it identifiable via nameservices.
          * \param initial_state The initial TaskState of the TaskContext. Default is Stopped state.
          */
-        DroneFlightControlTask(std::string const& name = "drone_dji_sdk::DroneFlightControlTask");
+        DroneFlightControlTask(std::string const &name = "drone_dji_sdk::DroneFlightControlTask");
 
         /** Default deconstructor of DroneFlightControlTask
          */
-	~DroneFlightControlTask();
+        ~DroneFlightControlTask();
 
         /** This hook is called by Orocos when the state machine transitions
          * from PreOperational to Stopped. If it returns false, then the
@@ -124,20 +122,26 @@ namespace drone_dji_sdk{
 
     private:
 
+        uint32_t mFunctionTimeout;
+        float mPosThresholdInM;
+        float mYawThresholdInDeg;
+        Vehicle::ActivateData mActivateData;
+        DJI::OSDK::Setup mSetup;
+
         /** Monitored Takeoff
          * This implementation of takeoff  with monitoring makes sure your aircraft
          * actually took off and only returns when takeoff is complete.
          * Use unless you want to do other stuff during takeoff - this will block
          * the main thread.
          */
-        bool monitoredTakeoff(DJI::OSDK::Vehicle* vehiclePtr, int timeout = 1);
+        bool monitoredTakeoff();
 
         /** Monitored Landing (Blocking API call). 
          * Return status as well as ack.
          * This version of takeoff makes sure your aircraft actually took off
          * and only returns when takeoff is complete.
          */
-        bool monitoredLanding(DJI::OSDK::Vehicle* vehiclePtr, int timeout = 1);
+        bool monitoredLanding();
 
         /** Position Control. Allows you to set an offset from your current
          * location. The aircraft will move to that position and stay there.
@@ -147,37 +151,41 @@ namespace drone_dji_sdk{
          * setpoints and use attitude control or convert to velocity setpoints
          * and use velocity control.
          */
-        bool moveByPositionOffset(DJI::OSDK::Vehicle *vehicle, float xOffsetDesired,
-                                  float yOffsetDesired, float zOffsetDesired,
-                                  float yawDesired, float posThresholdInM = 0.8,
-                                  float yawThresholdInDeg = 1.0);
+        bool moveByPositionOffset(const Telemetry::Vector3f& offsetDesired,
+                                  float yawDesiredInDeg);
 
         // Helper Functions
 
-        /** Very simple calculation of local NED offset between two pairs of GPS
-         * coordinates.
-         * Accurate when distances are small.
-         */
-        void localOffsetFromGpsOffset(DJI::OSDK::Vehicle* vehicle,
-                                      DJI::OSDK::Telemetry::Vector3f& deltaNed,
-                                      void* target, void* origin);
-        DJI::OSDK::Telemetry::Vector3f toEulerAngle(void* quaternionData);
-        bool startGlobalPositionBroadcast(DJI::OSDK::Vehicle* vehicle);
-
+        Telemetry::Vector3f quaternionToEulerAngle(const Telemetry::Quaternion& quat);
+        bool startGlobalPositionBroadcast();
         static void
         obtainJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
                                       UserData userData);
         static void
         releaseJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
                                        UserData userData);
-
-        uint32_t mFunctionTimeout;
-        Vehicle::ActivateData mActivateData;
-        DJI::OSDK::Setup mSetup;
+        bool setUpSubscription(int pkgIndex, int freq,
+                               Telemetry::TopicName topicList[], uint8_t topicSize);
+        bool teardownSubscription(const int pkgIndex);
+        bool motorStartedCheck();
+        bool takeOffInAirCheck();
+        bool takeoffFinishedCheck();
+        bool landFinishedCheck(void);
+        bool checkActionStarted(uint8_t mode);
+        Telemetry::Vector3f localOffsetFromGpsAndFusedHeightOffset(
+            const Telemetry::GPSFused &target, const Telemetry::GPSFused &origin,
+            const float32_t &targetHeight, const float32_t &originHeight);
+        Telemetry::Vector3f vector3FSub(const Telemetry::Vector3f &vectorA,
+                             const Telemetry::Vector3f &vectorB);
+        void horizCommandLimit(float speedFactor, float &commandX,
+                               float &commandY);
+        float32_t vectorNorm(Telemetry::Vector3f v);
+        template <typename Type>
+        static int signOfData(Type type);
 
         void setupEnvironment();
         bool initVehicle();
-        bool checkTelemetry();
+        bool checkTelemetrySubscription();
 
         static E_OsdkStat
         OsdkUser_Console(const uint8_t *data,
@@ -221,16 +229,15 @@ namespace drone_dji_sdk{
         OsdkLinux_SemaphoreWait(T_OsdkSemHandle semaphore);
         static E_OsdkStat
         OsdkLinux_SemaphoreTimedWait(T_OsdkSemHandle semaphore,
-                                    uint32_t waitTime);
+                                     uint32_t waitTime);
         static E_OsdkStat
         OsdkLinux_SemaphorePost(T_OsdkSemHandle semaphore);
         static E_OsdkStat
         OsdkLinux_GetTimeMs(uint32_t *ms);
-        static void
-        *OsdkLinux_Malloc(uint32_t size);
+        static void*
+        OsdkLinux_Malloc(uint32_t size);
         static void
         OsdkLinux_Free(void *ptr);
-
     };
 }
 #endif

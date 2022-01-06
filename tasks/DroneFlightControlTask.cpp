@@ -2,9 +2,11 @@
 
 #include "DroneFlightControlTask.hpp"
 
-using namespace DJI::OSDK::Telemetry;
 using namespace DJI::OSDK;
 using namespace drone_dji_sdk;
+
+static const double EarthCenter = 6378137.0;
+static const double DEG2RAD = 0.01745329252;
 
 DroneFlightControlTask::DroneFlightControlTask(std::string const &name)
     : DroneFlightControlTaskBase(name)
@@ -30,14 +32,19 @@ bool DroneFlightControlTask::configureHook()
         std::cout << "Vehicle not initialized, exiting.\n";
     }
     mFunctionTimeout = 1; // second
+    mPosThresholdInM = 0.8;
+    mYawThresholdInDeg = 1;
     setupEnvironment();
-    initVehicle();
+    if (!initVehicle())
+        return false;
+    if (!checkTelemetrySubscription())
+        return false;
+
     // Obtain Control Authority
     mSetup.vehicle->flightController->obtainJoystickCtrlAuthorityAsync(obtainJoystickCtrlAuthorityCB,
                                                                        nullptr,
                                                                        mFunctionTimeout,
                                                                        2);
-    checkTelemetry();
 
     return true;
 }
@@ -49,9 +56,24 @@ bool DroneFlightControlTask::startHook()
     return true;
 }
 
+typedef DroneFlightControlTask::States TaskState;
+static TaskState checkState(uint8_t status)
+{
+    switch (status)
+    {
+    case 0:
+        return TaskState::DJI_STOPPED;
+    case 1:
+        return TaskState::DJI_ON_GROUND;
+    case 2:
+        return TaskState::DJI_IN_AIR;
+    }
+    // Never reached
+    throw std::invalid_argument("invalid controller state");
+}
+
 void DroneFlightControlTask::updateHook()
 {
-
     DroneFlightControlTaskBase::updateHook();
 }
 void DroneFlightControlTask::errorHook()
@@ -180,602 +202,186 @@ bool DroneFlightControlTask::initVehicle()
     return true;
 }
 
-bool DroneFlightControlTask::checkTelemetry()
+bool DroneFlightControlTask::checkTelemetrySubscription()
 {
-    char func[50];
-    int pkgIndex;
-
-    if (!mSetup.vehicle->isM100() && !mSetup.vehicle->isLegacyM600())
+    /*! Verify and setup the subscription */
+    // Status flight and status display mode
+    const int pkgIndex = 0;
+    int freq = 10;
+    Telemetry::TopicName topicList_1[] = {Telemetry::TOPIC_STATUS_FLIGHT, Telemetry::TOPIC_STATUS_DISPLAYMODE};
+    int topicSize = sizeof(topicList_1) / sizeof(topicList_1[0]);
+    if (!setUpSubscription(pkgIndex, freq, topicList_1, topicSize))
     {
-        // Telemetry: Verify the subscription
-        ACK::ErrorCode subscribeStatus;
-        subscribeStatus = mSetup.vehicle->subscribe->verify(mFunctionTimeout);
-        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-        {
-            ACK::getErrorCodeMessage(subscribeStatus, func);
-            return false;
-        }
-
-        // Telemetry: Subscribe to flight status and mode at freq 10 Hz
-        pkgIndex = 0;
-        int freq = 10;
-        TopicName topicList10Hz[] = {TOPIC_STATUS_FLIGHT,
-                                     TOPIC_STATUS_DISPLAYMODE};
-        int numTopic = sizeof(topicList10Hz) / sizeof(topicList10Hz[0]);
-        bool enableTimestamp = false;
-
-        bool pkgStatus = mSetup.vehicle->subscribe->initPackageFromTopicList(
-            pkgIndex, numTopic, topicList10Hz, enableTimestamp, freq);
-        if (!(pkgStatus))
-        {
-            return pkgStatus;
-        }
-        subscribeStatus = mSetup.vehicle->subscribe->startPackage(pkgIndex, mFunctionTimeout);
-        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-        {
-            ACK::getErrorCodeMessage(subscribeStatus, func);
-            // Cleanup before return
-            mSetup.vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
-            return false;
-        }
-
-        // Telemetry: Subscribe to quaternion, fused lat/lon and altitude at freq 50
-        // Hz
-        freq = 50;
-        TopicName topicList50Hz[] = {TOPIC_QUATERNION, TOPIC_GPS_FUSED};
-        numTopic = sizeof(topicList50Hz) / sizeof(topicList50Hz[0]);
-        enableTimestamp = false;
-
-        pkgStatus = mSetup.vehicle->subscribe->initPackageFromTopicList(
-            pkgIndex, numTopic, topicList50Hz, enableTimestamp, freq);
-        if (!(pkgStatus))
-        {
-            return pkgStatus;
-        }
-        subscribeStatus =
-            mSetup.vehicle->subscribe->startPackage(pkgIndex, mFunctionTimeout);
-        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
-        {
-            ACK::getErrorCodeMessage(subscribeStatus, func);
-            // Cleanup before return
-            mSetup.vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
-            return false;
-        }
-
-        // Also, since we don't have a source for relative height through subscription,
-        // start using broadcast height
-        if (!startGlobalPositionBroadcast(mSetup.vehicle))
-        {
-            // Cleanup before return
-            mSetup.vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
-            return false;
-        }
-    }
-    // Wait for data to come in
-    sleep(1);
-    return true;
-}
-
-bool DroneFlightControlTask::monitoredTakeoff(Vehicle *vehicle, int timeout)
-{
-    char func[50];
-    int pkgIndex = 0;
-
-    // Start takeoff
-    ACK::ErrorCode takeoffStatus = vehicle->control->takeoff(timeout);
-    if (ACK::getError(takeoffStatus) != ACK::SUCCESS)
-    {
-        ACK::getErrorCodeMessage(takeoffStatus, func);
         return false;
     }
-    // First check: Motors started
-    int motorsNotStarted = 0;
-    int timeoutCycles = 20;
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    // Topic quaternion and GPS fused
+    int controlFreqInHz = 50; // Hz
+    Telemetry::TopicName topicList_2[] = {Telemetry::TOPIC_QUATERNION, Telemetry::TOPIC_GPS_FUSED};
+    int numTopic = sizeof(topicList_2) / sizeof(topicList_2[0]);
+    if (!setUpSubscription(pkgIndex, controlFreqInHz, topicList_2, numTopic))
     {
-        while (vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>() !=
-                   VehicleStatus::FlightStatus::ON_GROUND &&
-               vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-                   VehicleStatus::DisplayMode::MODE_ENGINE_START &&
-               motorsNotStarted < timeoutCycles)
-        {
-            motorsNotStarted++;
-            usleep(100000);
-        }
-        if (motorsNotStarted == timeoutCycles)
-        {
-            std::cout << "Takeoff failed. Motors are not spinning." << std::endl;
-            // Cleanup
-            if (!vehicle->isM100() && !vehicle->isLegacyM600())
-            {
-                vehicle->subscribe->removePackage(0, timeout);
-            }
-            return false;
-        }
-        else
-        {
-            std::cout << "Motors spinning...\n";
-        }
-    }
-    else if (vehicle->isLegacyM600())
-    {
-        while ((vehicle->broadcast->getStatus().flight <
-                DJI::OSDK::VehicleStatus::FlightStatus::ON_GROUND) &&
-               motorsNotStarted < timeoutCycles)
-        {
-            motorsNotStarted++;
-            usleep(100000);
-        }
-        if (motorsNotStarted < timeoutCycles)
-        {
-            std::cout << "Successful TakeOff!" << std::endl;
-        }
-    }
-    else // M100
-    {
-        while ((vehicle->broadcast->getStatus().flight <
-                DJI::OSDK::VehicleStatus::M100FlightStatus::TAKEOFF) &&
-               motorsNotStarted < timeoutCycles)
-        {
-            motorsNotStarted++;
-            usleep(100000);
-        }
-        if (motorsNotStarted < timeoutCycles)
-        {
-            std::cout << "Successful TakeOff!" << std::endl;
-        }
-    }
-    // Second check: In air
-    int stillOnGround = 0;
-    timeoutCycles = 110;
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
-    {
-        while (vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>() !=
-                   VehicleStatus::FlightStatus::IN_AIR &&
-               (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-                    VehicleStatus::DisplayMode::MODE_ASSISTED_TAKEOFF ||
-                vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-                    VehicleStatus::DisplayMode::MODE_AUTO_TAKEOFF) &&
-               stillOnGround < timeoutCycles)
-        {
-            stillOnGround++;
-            usleep(100000);
-        }
-        if (stillOnGround == timeoutCycles)
-        {
-            std::cout << "Takeoff failed. Aircraft is still on the ground, but the "
-                         "motors are spinning."
-                      << std::endl;
-            // Cleanup
-            if (!vehicle->isM100() && !vehicle->isLegacyM600())
-            {
-                vehicle->subscribe->removePackage(0, timeout);
-            }
-            return false;
-        }
-        else
-        {
-            std::cout << "Ascending...\n";
-        }
-    }
-    else if (vehicle->isLegacyM600())
-    {
-        while ((vehicle->broadcast->getStatus().flight <
-                DJI::OSDK::VehicleStatus::FlightStatus::IN_AIR) &&
-               stillOnGround < timeoutCycles)
-        {
-            stillOnGround++;
-            usleep(100000);
-        }
-        if (stillOnGround < timeoutCycles)
-        {
-            std::cout << "Aircraft in air!" << std::endl;
-        }
-    }
-    else // M100
-    {
-        while ((vehicle->broadcast->getStatus().flight !=
-                DJI::OSDK::VehicleStatus::M100FlightStatus::IN_AIR_STANDBY) &&
-               stillOnGround < timeoutCycles)
-        {
-            stillOnGround++;
-            usleep(100000);
-        }
-        if (stillOnGround < timeoutCycles)
-        {
-            std::cout << "Aircraft in air!" << std::endl;
-        }
-    }
-    // Final check: Finished takeoff
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
-    {
-        while (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() ==
-                   VehicleStatus::DisplayMode::MODE_ASSISTED_TAKEOFF ||
-               vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() ==
-                   VehicleStatus::DisplayMode::MODE_AUTO_TAKEOFF)
-        {
-            sleep(1);
-        }
-        if (!vehicle->isM100() && !vehicle->isLegacyM600())
-        {
-            if (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-                    VehicleStatus::DisplayMode::MODE_P_GPS ||
-                vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-                    VehicleStatus::DisplayMode::MODE_ATTITUDE)
-            {
-                std::cout << "Successful takeoff!\n";
-            }
-            else
-            {
-                std::cout
-                    << "Takeoff finished, but the aircraft is in an unexpected mode. "
-                       "Please connect DJI GO.\n";
-                vehicle->subscribe->removePackage(0, timeout);
-                return false;
-            }
-        }
-    }
-    else
-    {
-        float32_t delta;
-        Telemetry::GlobalPosition currentHeight;
-        Telemetry::GlobalPosition deltaHeight =
-            vehicle->broadcast->getGlobalPosition();
-        do
-        {
-            sleep(4);
-            currentHeight = vehicle->broadcast->getGlobalPosition();
-            delta = fabs(currentHeight.altitude - deltaHeight.altitude);
-            deltaHeight.altitude = currentHeight.altitude;
-        } while (delta >= 0.009);
-        std::cout << "Aircraft hovering at " << currentHeight.altitude << "m!\n";
-    }
-    // Cleanup
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
-    {
-        ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
-        if (ACK::getError(ack))
-        {
-            std::cout
-                << "Error unsubscribing; please restart the drone/FC to get back "
-                   "to a clean state.\n";
-        }
+        return false;
     }
     return true;
 }
 
-bool DroneFlightControlTask::monitoredLanding(Vehicle *vehicle, int timeout)
+bool DroneFlightControlTask::monitoredTakeoff()
 {
-    char func[50];
     int pkgIndex = 0;
+    //! Start takeoff
+    //ErrorCode::ErrorCodeType takeoffStatus =
+    mSetup.vehicle->flightController->startTakeoffSync(mFunctionTimeout);
 
-    // Start landing
-    ACK::ErrorCode landingStatus = vehicle->control->land(timeout);
-    if (ACK::getError(landingStatus) != ACK::SUCCESS)
+    //! Motors start check
+    if (!motorStartedCheck())
     {
-        ACK::getErrorCodeMessage(landingStatus, func);
-        return false;
-    }
-
-    // First check: Landing started
-    int landingNotStarted = 0;
-    int timeoutCycles = 20;
-
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
-    {
-        while (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-                   VehicleStatus::DisplayMode::MODE_AUTO_LANDING &&
-               landingNotStarted < timeoutCycles)
-        {
-            landingNotStarted++;
-            usleep(100000);
-        }
-    }
-    else if (vehicle->isM100())
-    {
-        while (vehicle->broadcast->getStatus().flight !=
-                   DJI::OSDK::VehicleStatus::M100FlightStatus::LANDING &&
-               landingNotStarted < timeoutCycles)
-        {
-            landingNotStarted++;
-            usleep(100000);
-        }
-    }
-
-    if (landingNotStarted == timeoutCycles)
-    {
-        std::cout << "Landing failed. Aircraft is still in the air." << std::endl;
-        if (!vehicle->isM100() && !vehicle->isLegacyM600())
-        {
-            // Cleanup before return
-            ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
-            if (ACK::getError(ack))
-            {
-                std::cout << "Error unsubscribing; please restart the drone/FC to get "
-                             "back to a clean state.\n";
-            }
-        }
+        std::cout << "Takeoff failed. Motors are not spinning." << std::endl;
+        teardownSubscription(pkgIndex);
         return false;
     }
     else
     {
-        std::cout << "Landing...\n";
+        std::cout << "Motors spinning...\n";
     }
-
-    // Second check: Finished landing
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    //! In air check
+    if (!takeOffInAirCheck())
     {
-        while (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() ==
-                   VehicleStatus::DisplayMode::MODE_AUTO_LANDING &&
-               vehicle->subscribe->getValue<TOPIC_STATUS_FLIGHT>() ==
-                   VehicleStatus::FlightStatus::IN_AIR)
-        {
-            sleep(1);
-        }
-
-        if (vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-                VehicleStatus::DisplayMode::MODE_P_GPS ||
-            vehicle->subscribe->getValue<TOPIC_STATUS_DISPLAYMODE>() !=
-                VehicleStatus::DisplayMode::MODE_ATTITUDE)
-        {
-            std::cout << "Successful landing!\n";
-        }
-        else
-        {
-            std::cout
-                << "Landing finished, but the aircraft is in an unexpected mode. "
-                   "Please connect DJI GO.\n";
-            ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
-            if (ACK::getError(ack))
-            {
-                std::cout << "Error unsubscribing; please restart the drone/FC to get "
-                             "back to a clean state.\n";
-            }
-            return false;
-        }
+        std::cout << "Takeoff failed. Aircraft is still on the ground, but the "
+                     "motors are spinning."
+                  << std::endl;
+        teardownSubscription(pkgIndex);
+        return false;
     }
-    else if (vehicle->isLegacyM600())
+    else
     {
-        while (vehicle->broadcast->getStatus().flight >
-               DJI::OSDK::VehicleStatus::FlightStatus::STOPED)
-        {
-            sleep(1);
-        }
-
-        Telemetry::GlobalPosition gp;
-        do
-        {
-            sleep(2);
-            gp = vehicle->broadcast->getGlobalPosition();
-        } while (gp.altitude != 0);
-
-        if (gp.altitude != 0)
-        {
-            std::cout
-                << "Landing finished, but the aircraft is in an unexpected mode. "
-                   "Please connect DJI GO.\n";
-            return false;
-        }
-        else
-        {
-            std::cout << "Successful landing!\n";
-        }
+        std::cout << "Ascending...\n";
     }
-    else // M100
+
+    //! Finished takeoff check
+    if (takeoffFinishedCheck())
     {
-        while (vehicle->broadcast->getStatus().flight ==
-               DJI::OSDK::VehicleStatus::M100FlightStatus::FINISHING_LANDING)
-        {
-            sleep(1);
-        }
-
-        Telemetry::GlobalPosition gp;
-        do
-        {
-            sleep(2);
-            gp = vehicle->broadcast->getGlobalPosition();
-        } while (gp.altitude != 0);
-
-        if (gp.altitude != 0)
-        {
-            std::cout
-                << "Landing finished, but the aircraft is in an unexpected mode. "
-                   "Please connect DJI GO.\n";
-            return false;
-        }
-        else
-        {
-            std::cout << "Successful landing!\n";
-        }
+        std::cout << "Successful takeoff!\n";
     }
-
-    // Cleanup
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    else
     {
-        ACK::ErrorCode ack = vehicle->subscribe->removePackage(pkgIndex, timeout);
-        if (ACK::getError(ack))
-        {
-            std::cout
-                << "Error unsubscribing; please restart the drone/FC to get back "
-                   "to a clean state.\n";
-        }
+        std::cout << "Takeoff finished, but the aircraft is in an unexpected mode. "
+                     "Please connect DJI GO.\n";
+        teardownSubscription(pkgIndex);
+        return false;
     }
-
+    teardownSubscription(pkgIndex);
     return true;
 }
 
-bool DroneFlightControlTask::moveByPositionOffset(Vehicle *vehicle,
-                                                  float xOffsetDesired,
-                                                  float yOffsetDesired,
-                                                  float zOffsetDesired,
-                                                  float yawDesired,
-                                                  float posThresholdInM,
-                                                  float yawThresholdInDeg)
+bool DroneFlightControlTask::monitoredLanding()
 {
-    // Set timeout: this timeout is the time you allow the drone to take to finish
-    // the
-    // mission
+    int pkgIndex = 0;
+    /*! Start landing */
+    DSTATUS("Start landing action");
+    ErrorCode::ErrorCodeType landingErrCode =
+        mSetup.vehicle->flightController->startLandingSync(mFunctionTimeout);
+    if (landingErrCode != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("Fail to execute landing action! Error code: "
+               "%llx\n ",
+               landingErrCode);
+        return false;
+    }
+
+    /*! Step 3: check Landing start*/
+    if (!checkActionStarted(VehicleStatus::DisplayMode::MODE_AUTO_LANDING))
+    {
+        DERROR("Fail to execute Landing action!");
+        return false;
+    }
+    else
+    {
+        /*! Step 4: check Landing finished*/
+        if (this->landFinishedCheck())
+        {
+            DSTATUS("Successful landing!");
+        }
+        else
+        {
+            DERROR("Landing finished, but the aircraft is in an unexpected mode. "
+                   "Please connect DJI Assistant.");
+            teardownSubscription(pkgIndex);
+            return false;
+        }
+    }
+
+    /*! Step 5: Cleanup */
+    teardownSubscription(pkgIndex);
+    return true;
+}
+
+bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &offsetDesired,
+                                                  float yawDesiredInDeg)
+{
     int timeoutInMilSec = 40000;
     int controlFreqInHz = 50; // Hz
     int cycleTimeInMs = 1000 / controlFreqInHz;
-    int outOfControlBoundsTimeLimit = 10 * cycleTimeInMs;  // 10 cycles
-    int withinControlBoundsTimeReqmt = 50 * cycleTimeInMs; // 50 cycles
-    int pkgIndex = 0;
-
-    // Get data
-
-    // Global position retrieved via subscription
-    Telemetry::TypeMap<TOPIC_GPS_FUSED>::type currentSubscriptionGPS;
-    Telemetry::TypeMap<TOPIC_GPS_FUSED>::type originSubscriptionGPS;
-    // Global position retrieved via broadcast
-    Telemetry::GlobalPosition currentBroadcastGP;
-    Telemetry::GlobalPosition originBroadcastGP;
-
-    // Convert position offset from first position to local coordinates
-    Telemetry::Vector3f localOffset;
-
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
-    {
-        currentSubscriptionGPS = vehicle->subscribe->getValue<TOPIC_GPS_FUSED>();
-        originSubscriptionGPS = currentSubscriptionGPS;
-        localOffsetFromGpsOffset(vehicle, localOffset,
-                                 static_cast<void *>(&currentSubscriptionGPS),
-                                 static_cast<void *>(&originSubscriptionGPS));
-
-        // Get the broadcast GP since we need the height for zCmd
-        currentBroadcastGP = vehicle->broadcast->getGlobalPosition();
-    }
-    else
-    {
-        currentBroadcastGP = vehicle->broadcast->getGlobalPosition();
-        originBroadcastGP = currentBroadcastGP;
-        localOffsetFromGpsOffset(vehicle, localOffset,
-                                 static_cast<void *>(&currentBroadcastGP),
-                                 static_cast<void *>(&originBroadcastGP));
-    }
-
-    // Get initial offset. We will update this in a loop later.
-    double xOffsetRemaining = xOffsetDesired - localOffset.x;
-    double yOffsetRemaining = yOffsetDesired - localOffset.y;
-    double zOffsetRemaining = zOffsetDesired - localOffset.z;
-
-    // Conversions
-    double yawDesiredRad = DEG2RAD * yawDesired;
-    double yawThresholdInRad = DEG2RAD * yawThresholdInDeg;
-
-    //! Get Euler angle
-
-    // Quaternion retrieved via subscription
-    Telemetry::TypeMap<TOPIC_QUATERNION>::type subscriptionQ;
-    // Quaternion retrieved via broadcast
-    Telemetry::Quaternion broadcastQ;
-
-    double yawInRad;
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
-    {
-        subscriptionQ = vehicle->subscribe->getValue<TOPIC_QUATERNION>();
-        yawInRad = toEulerAngle((static_cast<void *>(&subscriptionQ))).z / DEG2RAD;
-    }
-    else
-    {
-        broadcastQ = vehicle->broadcast->getQuaternion();
-        yawInRad = toEulerAngle((static_cast<void *>(&broadcastQ))).z / DEG2RAD;
-    }
-
+    int outOfControlBoundsTimeLimit = 10 * cycleTimeInMs;   // 10 cycles
+    int withinControlBoundsTimeReqmt = 100 * cycleTimeInMs; // 100 cycles
     int elapsedTimeInMs = 0;
     int withinBoundsCounter = 0;
     int outOfBounds = 0;
     int brakeCounter = 0;
     int speedFactor = 2;
-    float xCmd, yCmd, zCmd;
+    int pkgIndex = 0;
 
-    /*! Calculate the inputs to send the position controller. We implement basic
-   *  receding setpoint position control and the setpoint is always 1 m away
-   *  from the current position - until we get within a threshold of the goal.
-   *  From that point on, we send the remaining distance as the setpoint.
+    /* now we need position-height broadcast to obtain the real-time altitude of the aircraft, 
+   * which is consistent with the altitude closed-loop data of flight control internal position control
+   * TO DO:the data will be replaced by new data subscription.
    */
-    if (xOffsetDesired > 0)
-        xCmd = (xOffsetDesired < speedFactor) ? xOffsetDesired : speedFactor;
-    else if (xOffsetDesired < 0)
-        xCmd =
-            (xOffsetDesired > -1 * speedFactor) ? xOffsetDesired : -1 * speedFactor;
-    else
-        xCmd = 0;
-
-    if (yOffsetDesired > 0)
-        yCmd = (yOffsetDesired < speedFactor) ? yOffsetDesired : speedFactor;
-    else if (yOffsetDesired < 0)
-        yCmd =
-            (yOffsetDesired > -1 * speedFactor) ? yOffsetDesired : -1 * speedFactor;
-    else
-        yCmd = 0;
-
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    if (!startGlobalPositionBroadcast())
     {
-        zCmd = currentBroadcastGP.height + zOffsetDesired; //Since subscription cannot give us a relative height, use broadcast.
+        return false;
     }
-    else
-    {
-        zCmd = currentBroadcastGP.height + zOffsetDesired;
-    }
+    sleep(1);
 
-    //! Main closed-loop receding setpoint position control
+    //! get origin position and relative height(from home point)of aircraft.
+    Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type originGPSPosition =
+        mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
+    Telemetry::GlobalPosition currentBroadcastGP = mSetup.vehicle->broadcast->getGlobalPosition();
+    float32_t originHeightBaseHomepoint = currentBroadcastGP.height;
+    FlightController::JoystickMode joystickMode = {
+        FlightController::HorizontalLogic::HORIZONTAL_POSITION,
+        FlightController::VerticalLogic::VERTICAL_POSITION,
+        FlightController::YawLogic::YAW_ANGLE,
+        FlightController::HorizontalCoordinate::HORIZONTAL_GROUND,
+        FlightController::StableMode::STABLE_ENABLE,
+    };
+    mSetup.vehicle->flightController->setJoystickMode(joystickMode);
+
     while (elapsedTimeInMs < timeoutInMilSec)
     {
-        vehicle->control->positionAndYawCtrl(xCmd, yCmd, zCmd,
-                                             yawDesiredRad / DEG2RAD);
+        Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type currentGPSPosition =
+            mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
+        Telemetry::TypeMap<Telemetry::TOPIC_QUATERNION>::type currentQuaternion =
+            mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_QUATERNION>();
+        currentBroadcastGP = mSetup.vehicle->broadcast->getGlobalPosition();
+        float yawInRad = quaternionToEulerAngle(currentQuaternion).z;
+        //! get the vector between aircraft and origin point.
 
-        usleep(cycleTimeInMs * 1000);
-        elapsedTimeInMs += cycleTimeInMs;
-        //! Get current position in required coordinates and units
-        if (!vehicle->isM100() && !vehicle->isLegacyM600())
-        {
-            subscriptionQ = vehicle->subscribe->getValue<TOPIC_QUATERNION>();
-            yawInRad = toEulerAngle((static_cast<void *>(&subscriptionQ))).z;
-            currentSubscriptionGPS = vehicle->subscribe->getValue<TOPIC_GPS_FUSED>();
-            localOffsetFromGpsOffset(vehicle, localOffset,
-                                     static_cast<void *>(&currentSubscriptionGPS),
-                                     static_cast<void *>(&originSubscriptionGPS));
+        Telemetry::Vector3f localOffset = localOffsetFromGpsAndFusedHeightOffset(currentGPSPosition, originGPSPosition,
+                                                                                 currentBroadcastGP.height, originHeightBaseHomepoint);
+        //! get the vector between aircraft and target point.
+        Telemetry::Vector3f offsetRemaining = vector3FSub(offsetDesired, localOffset);
 
-            // Get the broadcast GP since we need the height for zCmd
-            currentBroadcastGP = vehicle->broadcast->getGlobalPosition();
-        }
-        else
-        {
-            broadcastQ = vehicle->broadcast->getQuaternion();
-            yawInRad = toEulerAngle((static_cast<void *>(&broadcastQ))).z;
-            currentBroadcastGP = vehicle->broadcast->getGlobalPosition();
-            localOffsetFromGpsOffset(vehicle, localOffset,
-                                     static_cast<void *>(&currentBroadcastGP),
-                                     static_cast<void *>(&originBroadcastGP));
-        }
+        Telemetry::Vector3f positionCommand = offsetRemaining;
+        horizCommandLimit(speedFactor, positionCommand.x, positionCommand.y);
 
-        //! See how much farther we have to go
-        xOffsetRemaining = xOffsetDesired - localOffset.x;
-        yOffsetRemaining = yOffsetDesired - localOffset.y;
-        zOffsetRemaining = zOffsetDesired - localOffset.z;
+        FlightController::JoystickCommand joystickCommand = {
+            positionCommand.x, positionCommand.y,
+            offsetDesired.z + originHeightBaseHomepoint, yawDesiredInDeg};
 
-        //! See if we need to modify the setpoint
-        if (std::abs(xOffsetRemaining) < speedFactor)
-        {
-            xCmd = xOffsetRemaining;
-        }
-        if (std::abs(yOffsetRemaining) < speedFactor)
-        {
-            yCmd = yOffsetRemaining;
-        }
+        mSetup.vehicle->flightController->setJoystickCommand(joystickCommand);
 
-        if (vehicle->isM100() && std::abs(xOffsetRemaining) < posThresholdInM &&
-            std::abs(yOffsetRemaining) < posThresholdInM &&
-            std::abs(yawInRad - yawDesiredRad) < yawThresholdInRad)
-        {
-            //! 1. We are within bounds; start incrementing our in-bound counter
-            withinBoundsCounter += cycleTimeInMs;
-        }
-        else if (std::abs(xOffsetRemaining) < posThresholdInM &&
-                 std::abs(yOffsetRemaining) < posThresholdInM &&
-                 std::abs(zOffsetRemaining) < posThresholdInM &&
-                 std::abs(yawInRad - yawDesiredRad) < yawThresholdInRad)
+        mSetup.vehicle->flightController->joystickAction();
+
+        if (vectorNorm(offsetRemaining) < mPosThresholdInM &&
+            std::fabs(yawInRad / DEG2RAD - yawDesiredInDeg) < mYawThresholdInDeg)
         {
             //! 1. We are within bounds; start incrementing our in-bound counter
             withinBoundsCounter += cycleTimeInMs;
@@ -799,111 +405,243 @@ bool DroneFlightControlTask::moveByPositionOffset(Vehicle *vehicle,
         {
             break;
         }
+        usleep(cycleTimeInMs * 1000);
+        elapsedTimeInMs += cycleTimeInMs;
     }
 
-    //! Set velocity to zero, to prevent any residual velocity from position
-    //! command
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    while (brakeCounter < withinControlBoundsTimeReqmt)
     {
-        while (brakeCounter < withinControlBoundsTimeReqmt)
-        {
-            vehicle->control->emergencyBrake();
-            usleep(cycleTimeInMs * 10);
-            brakeCounter += cycleTimeInMs;
-        }
+        //! TODO: remove emergencyBrake
+        mSetup.vehicle->flightController->emergencyBrakeAction();
+        usleep(cycleTimeInMs * 1000);
+        brakeCounter += cycleTimeInMs;
     }
 
     if (elapsedTimeInMs >= timeoutInMilSec)
     {
         std::cout << "Task timeout!\n";
-        if (!vehicle->isM100() && !vehicle->isLegacyM600())
-        {
-            ACK::ErrorCode ack =
-                vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
-            if (ACK::getError(ack))
-            {
-                std::cout << "Error unsubscribing; please restart the drone/FC to get "
-                             "back to a clean state.\n";
-            }
-        }
-        return ACK::FAIL;
+        teardownSubscription(pkgIndex);
+        return false;
     }
-
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
-    {
-        ACK::ErrorCode ack =
-            vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
-        if (ACK::getError(ack))
-        {
-            std::cout
-                << "Error unsubscribing; please restart the drone/FC to get back "
-                   "to a clean state.\n";
-        }
-    }
-
-    return ACK::SUCCESS;
+    teardownSubscription(pkgIndex);
+    return true;
 }
 
-void DroneFlightControlTask::localOffsetFromGpsOffset(Vehicle *vehicle,
-                                                      Vector3f &deltaNed,
-                                                      void *target,
-                                                      void *origin)
+bool DroneFlightControlTask::setUpSubscription(int pkgIndex, int freq,
+                                               Telemetry::TopicName topicList[],
+                                               uint8_t topicSize)
 {
-    Telemetry::GPSFused *subscriptionTarget;
-    Telemetry::GPSFused *subscriptionOrigin;
-    Telemetry::GlobalPosition *broadcastTarget;
-    Telemetry::GlobalPosition *broadcastOrigin;
-    double deltaLon;
-    double deltaLat;
-
-    if (!vehicle->isM100() && !vehicle->isLegacyM600())
+    if (mSetup.vehicle)
     {
-        subscriptionTarget = (Telemetry::GPSFused *)target;
-        subscriptionOrigin = (Telemetry::GPSFused *)origin;
-        deltaLon = subscriptionTarget->longitude - subscriptionOrigin->longitude;
-        deltaLat = subscriptionTarget->latitude - subscriptionOrigin->latitude;
-        deltaNed.x = deltaLat * C_EARTH;
-        deltaNed.y = deltaLon * C_EARTH * cos(subscriptionTarget->latitude);
-        deltaNed.z = subscriptionTarget->altitude - subscriptionOrigin->altitude;
+        /*! Telemetry: Verify the subscription*/
+        ACK::ErrorCode subscribeStatus;
+        subscribeStatus = mSetup.vehicle->subscribe->verify(mFunctionTimeout);
+        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+        {
+            ACK::getErrorCodeMessage(subscribeStatus, __func__);
+            return false;
+        }
+
+        bool enableTimestamp = false;
+        bool pkgStatus = mSetup.vehicle->subscribe->initPackageFromTopicList(
+            pkgIndex, topicSize, topicList, enableTimestamp, freq);
+        if (!(pkgStatus))
+        {
+            return pkgStatus;
+        }
+
+        /*! Start listening to the telemetry data */
+        subscribeStatus = mSetup.vehicle->subscribe->startPackage(pkgIndex, mFunctionTimeout);
+        if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
+        {
+            ACK::getErrorCodeMessage(subscribeStatus, __func__);
+            /*! Cleanup*/
+            ACK::ErrorCode ack = mSetup.vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
+            if (ACK::getError(ack))
+            {
+                DERROR(
+                    "Error unsubscription; please restart the drone/FC to get "
+                    "back to a clean state");
+            }
+            return false;
+        }
+        return true;
     }
     else
     {
-        broadcastTarget = (Telemetry::GlobalPosition *)target;
-        broadcastOrigin = (Telemetry::GlobalPosition *)origin;
-        deltaLon = broadcastTarget->longitude - broadcastOrigin->longitude;
-        deltaLat = broadcastTarget->latitude - broadcastOrigin->latitude;
-        deltaNed.x = deltaLat * C_EARTH;
-        deltaNed.y = deltaLon * C_EARTH * cos(broadcastTarget->latitude);
-        deltaNed.z = broadcastTarget->altitude - broadcastOrigin->altitude;
+        DERROR("vehicle haven't been initialized", __func__);
+        return false;
     }
 }
 
-Vector3f DroneFlightControlTask::toEulerAngle(void *quaternionData)
+bool DroneFlightControlTask::motorStartedCheck()
 {
-    Telemetry::Vector3f ans;
-    Telemetry::Quaternion *quaternion = (Telemetry::Quaternion *)quaternionData;
-
-    double q2sqr = quaternion->q2 * quaternion->q2;
-    double t0 = -2.0 * (q2sqr + quaternion->q3 * quaternion->q3) + 1.0;
-    double t1 =
-        +2.0 * (quaternion->q1 * quaternion->q2 + quaternion->q0 * quaternion->q3);
-    double t2 =
-        -2.0 * (quaternion->q1 * quaternion->q3 - quaternion->q0 * quaternion->q2);
-    double t3 =
-        +2.0 * (quaternion->q2 * quaternion->q3 + quaternion->q0 * quaternion->q1);
-    double t4 = -2.0 * (quaternion->q1 * quaternion->q1 + q2sqr) + 1.0;
-
-    t2 = (t2 > 1.0) ? 1.0 : t2;
-    t2 = (t2 < -1.0) ? -1.0 : t2;
-
-    ans.x = asin(t2);
-    ans.y = atan2(t3, t4);
-    ans.z = atan2(t1, t0);
-
-    return ans;
+    int motorsNotStarted = 0;
+    int timeoutCycles = 20;
+    while (mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>() !=
+               VehicleStatus::FlightStatus::ON_GROUND &&
+           mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() !=
+               VehicleStatus::DisplayMode::MODE_ENGINE_START &&
+           motorsNotStarted < timeoutCycles)
+    {
+        motorsNotStarted++;
+        usleep(100000);
+    }
+    return motorsNotStarted != timeoutCycles ? true : false;
 }
 
-bool DroneFlightControlTask::startGlobalPositionBroadcast(Vehicle *vehicle)
+bool DroneFlightControlTask::teardownSubscription(const int pkgIndex)
+{
+    ACK::ErrorCode ack = mSetup.vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
+    if (ACK::getError(ack))
+    {
+        DERROR(
+            "Error unsubscription; please restart the drone/FC to get back "
+            "to a clean state.");
+        return false;
+    }
+    return true;
+}
+
+bool DroneFlightControlTask::takeOffInAirCheck()
+{
+    int stillOnGround = 0;
+    int timeoutCycles = 110;
+    while (mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>() !=
+               VehicleStatus::FlightStatus::IN_AIR &&
+           (mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() !=
+                VehicleStatus::DisplayMode::MODE_ASSISTED_TAKEOFF ||
+            mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() !=
+                VehicleStatus::DisplayMode::MODE_AUTO_TAKEOFF) &&
+           stillOnGround < timeoutCycles)
+    {
+        stillOnGround++;
+        usleep(100000);
+    }
+
+    return stillOnGround != timeoutCycles ? true : false;
+}
+
+bool DroneFlightControlTask::takeoffFinishedCheck()
+{
+    while (mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() ==
+               VehicleStatus::DisplayMode::MODE_ASSISTED_TAKEOFF ||
+           mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() ==
+               VehicleStatus::DisplayMode::MODE_AUTO_TAKEOFF)
+    {
+        sleep(1);
+    }
+    return ((mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() ==
+             VehicleStatus::DisplayMode::MODE_P_GPS) ||
+            (mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() ==
+             VehicleStatus::DisplayMode::MODE_ATTITUDE))
+               ? true
+               : false;
+}
+
+bool DroneFlightControlTask::checkActionStarted(uint8_t mode)
+{
+    int actionNotStarted = 0;
+    int timeoutCycles = 20;
+    while (mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() != mode &&
+           actionNotStarted < timeoutCycles)
+    {
+        actionNotStarted++;
+        Platform::instance().taskSleepMs(100);
+    }
+    if (actionNotStarted == timeoutCycles)
+    {
+        DERROR("Start actions mode %d failed, current DISPLAYMODE is: %d ...", mode,
+               mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>());
+        return false;
+    }
+    else
+    {
+        DSTATUS("DISPLAYMODE: %d ...", mode);
+        return true;
+    }
+}
+
+bool DroneFlightControlTask::landFinishedCheck(void)
+{
+    while (mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() ==
+               VehicleStatus::DisplayMode::MODE_AUTO_LANDING &&
+           mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>() ==
+               VehicleStatus::FlightStatus::IN_AIR)
+    {
+        Platform::instance().taskSleepMs(1000);
+    }
+
+    return ((mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() !=
+                 VehicleStatus::DisplayMode::MODE_P_GPS ||
+             mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>() !=
+                 VehicleStatus::DisplayMode::MODE_ATTITUDE))
+               ? true
+               : false;
+}
+
+Telemetry::Vector3f DroneFlightControlTask::vector3FSub(const Telemetry::Vector3f &vectorA,
+                                                        const Telemetry::Vector3f &vectorB)
+{
+    Telemetry::Vector3f result;
+    result.x = vectorA.x - vectorB.x;
+    result.y = vectorA.y - vectorB.y;
+    result.z = vectorA.z - vectorB.z;
+    return result;
+}
+
+void DroneFlightControlTask::horizCommandLimit(float speedFactor, float &commandX,
+                                               float &commandY)
+{
+    if (fabs(commandX) > speedFactor)
+        commandX = signOfData<float>(commandX) * speedFactor;
+    if (fabs(commandY) > speedFactor)
+        commandY = signOfData<float>(commandY) * speedFactor;
+}
+
+Telemetry::Vector3f DroneFlightControlTask::localOffsetFromGpsAndFusedHeightOffset(
+    const Telemetry::GPSFused &target, const Telemetry::GPSFused &origin,
+    const float32_t &targetHeight, const float32_t &originHeight)
+{
+    Telemetry::Vector3f deltaNed;
+    double deltaLon = target.longitude - origin.longitude;
+    double deltaLat = target.latitude - origin.latitude;
+    deltaNed.x = deltaLat * EarthCenter;
+    deltaNed.y = deltaLon * EarthCenter * cos(target.latitude);
+    deltaNed.z = targetHeight - originHeight;
+    return deltaNed;
+}
+
+Telemetry::Vector3f DroneFlightControlTask::quaternionToEulerAngle(
+    const Telemetry::Quaternion &quat)
+{
+    Telemetry::Vector3f eulerAngle;
+    double q2sqr = quat.q2 * quat.q2;
+    double t0 = -2.0 * (q2sqr + quat.q3 * quat.q3) + 1.0;
+    double t1 = 2.0 * (quat.q1 * quat.q2 + quat.q0 * quat.q3);
+    double t2 = -2.0 * (quat.q1 * quat.q3 - quat.q0 * quat.q2);
+    double t3 = 2.0 * (quat.q2 * quat.q3 + quat.q0 * quat.q1);
+    double t4 = -2.0 * (quat.q1 * quat.q1 + q2sqr) + 1.0;
+    t2 = (t2 > 1.0) ? 1.0 : t2;
+    t2 = (t2 < -1.0) ? -1.0 : t2;
+    eulerAngle.x = asin(t2);
+    eulerAngle.y = atan2(t3, t4);
+    eulerAngle.z = atan2(t1, t0);
+    return eulerAngle;
+}
+
+template <typename Type>
+int DroneFlightControlTask::signOfData(Type type)
+{
+    return type < 0 ? -1 : 1;
+}
+
+float32_t DroneFlightControlTask::vectorNorm(Telemetry::Vector3f v)
+{
+    return sqrt(pow(v.x, 2) + pow(v.y, 2) + pow(v.z, 2));
+}
+
+bool DroneFlightControlTask::startGlobalPositionBroadcast()
 {
     uint8_t freq[16];
 
@@ -938,7 +676,7 @@ bool DroneFlightControlTask::startGlobalPositionBroadcast(Vehicle *vehicle)
     freq[12] = DataBroadcast::FREQ_HOLD;
     freq[13] = DataBroadcast::FREQ_HOLD;
 
-    ACK::ErrorCode ack = vehicle->broadcast->setBroadcastFreq(freq, 1);
+    ACK::ErrorCode ack = mSetup.vehicle->broadcast->setBroadcastFreq(freq, 1);
     if (ACK::getError(ack))
     {
         ACK::getErrorCodeMessage(ack, __func__);
