@@ -127,6 +127,7 @@ namespace drone_dji_sdk
         float mYawThresholdInDeg;
         Vehicle::ActivateData mActivateData;
         DJI::OSDK::Setup mSetup;
+        std::vector<DJIWaypointV2Action> mActions;
 
         /** Monitored Takeoff
          * This implementation of takeoff  with monitoring makes sure your aircraft
@@ -154,10 +155,26 @@ namespace drone_dji_sdk
         bool moveByPositionOffset(const Telemetry::Vector3f& offsetDesired,
                                   float yawDesiredInDeg);
 
+        ErrorCode::ErrorCodeType initMissionSetting();
+        ErrorCode::ErrorCodeType uploadWapointActions();
+        ErrorCode::ErrorCodeType startWaypointMission();
+        ErrorCode::ErrorCodeType runWaypointV2Mission();
+        ErrorCode::ErrorCodeType stopWaypointMission();
+        ErrorCode::ErrorCodeType pauseWaypointMission();
+        ErrorCode::ErrorCodeType resumeWaypointMission();
+        ErrorCode::ErrorCodeType uploadWaypointMission(int timeout);
+        ErrorCode::ErrorCodeType downloadWaypointMission(std::vector<WaypointV2> &mission);
+        ErrorCode::ErrorCodeType getActionRemainMemory(GetRemainRamAck &actionMemory);
+        std::vector<DJIWaypointV2Action> generateWaypointActions(uint16_t actionNum);
+        std::vector<WaypointV2> generatePolygonWaypoints(float32_t radius,
+                                                         uint16_t polygonNum);
+        void getGlobalCruiseSpeed();
+        void setWaypointV2Defaults(WaypointV2 &waypointV2);
+        void setGlobalCruiseSpeed(const GlobalCruiseSpeed &cruiseSpeed);
+
         // Helper Functions
 
         Telemetry::Vector3f quaternionToEulerAngle(const Telemetry::Quaternion& quat);
-        bool startGlobalPositionBroadcast();
         static void
         obtainJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
                                       UserData userData);
@@ -166,12 +183,13 @@ namespace drone_dji_sdk
                                        UserData userData);
         bool setUpSubscription(int pkgIndex, int freq,
                                Telemetry::TopicName topicList[], uint8_t topicSize);
-        bool teardownSubscription(const int pkgIndex);
+        bool startGlobalPositionBroadcast();
         bool motorStartedCheck();
         bool takeOffInAirCheck();
         bool takeoffFinishedCheck();
         bool landFinishedCheck(void);
         bool checkActionStarted(uint8_t mode);
+        bool teardownSubscription(const int pkgIndex);
         Telemetry::Vector3f localOffsetFromGpsAndFusedHeightOffset(
             const Telemetry::GPSFused &target, const Telemetry::GPSFused &origin,
             const float32_t &targetHeight, const float32_t &originHeight);
@@ -187,6 +205,16 @@ namespace drone_dji_sdk
         bool initVehicle();
         bool checkTelemetrySubscription();
 
+        static E_OsdkStat
+        updateMissionState(T_CmdHandle *cmdHandle,
+                           const T_CmdInfo *cmdInfo,
+                           const uint8_t *cmdData,
+                           void *userData);
+        static E_OsdkStat
+        updateMissionEvent(T_CmdHandle *cmdHandle,
+                           const T_CmdInfo *cmdInfo,
+                           const uint8_t *cmdData,
+                           void *userData);
         static E_OsdkStat
         OsdkUser_Console(const uint8_t *data,
                          uint16_t dataLen);

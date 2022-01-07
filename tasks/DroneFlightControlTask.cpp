@@ -40,12 +40,20 @@ bool DroneFlightControlTask::configureHook()
     if (!checkTelemetrySubscription())
         return false;
 
+    /*! init mission settings*/
+    if (initMissionSetting() != ErrorCode::SysCommonErr::Success)
+        return false;
+
+    // Register mission events and states
+    mSetup.vehicle->waypointV2Mission->RegisterMissionEventCallback(mSetup.vehicle->waypointV2Mission,
+                                                                    updateMissionEvent);
+    mSetup.vehicle->waypointV2Mission->RegisterMissionStateCallback(mSetup.vehicle->waypointV2Mission,
+                                                                    updateMissionState);
     // Obtain Control Authority
     mSetup.vehicle->flightController->obtainJoystickCtrlAuthorityAsync(obtainJoystickCtrlAuthorityCB,
                                                                        nullptr,
                                                                        mFunctionTimeout,
                                                                        2);
-
     return true;
 }
 
@@ -54,22 +62,6 @@ bool DroneFlightControlTask::startHook()
     if (!DroneFlightControlTaskBase::startHook())
         return false;
     return true;
-}
-
-typedef DroneFlightControlTask::States TaskState;
-static TaskState checkState(uint8_t status)
-{
-    switch (status)
-    {
-    case 0:
-        return TaskState::DJI_STOPPED;
-    case 1:
-        return TaskState::DJI_ON_GROUND;
-    case 2:
-        return TaskState::DJI_IN_AIR;
-    }
-    // Never reached
-    throw std::invalid_argument("invalid controller state");
 }
 
 void DroneFlightControlTask::updateHook()
@@ -222,6 +214,8 @@ bool DroneFlightControlTask::checkTelemetrySubscription()
     {
         return false;
     }
+    /*! wait for subscription data come*/
+    sleep(mFunctionTimeout);
     return true;
 }
 
@@ -449,9 +443,10 @@ bool DroneFlightControlTask::setUpSubscription(int pkgIndex, int freq,
         {
             return pkgStatus;
         }
-
+        usleep(5000);
         /*! Start listening to the telemetry data */
         subscribeStatus = mSetup.vehicle->subscribe->startPackage(pkgIndex, mFunctionTimeout);
+        usleep(5000);
         if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
         {
             ACK::getErrorCodeMessage(subscribeStatus, __func__);
@@ -688,7 +683,197 @@ bool DroneFlightControlTask::startGlobalPositionBroadcast()
     }
 }
 
-void DroneFlightControlTask::obtainJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode, UserData userData)
+ErrorCode::ErrorCodeType DroneFlightControlTask::runWaypointV2Mission()
+{
+    if (!mSetup.vehicle->isM300())
+    {
+        DSTATUS("This sample only supports M300!");
+        return false;
+    }
+
+    GetRemainRamAck actionMemory = {0};
+    ErrorCode::ErrorCodeType ret;
+    int pkgIndex = 0;
+
+    /*! upload mission */
+    /*! upload mission's timeout need to be longer than 2s*/
+    int uploadMissionTimeOut = 3;
+    ret = uploadWaypointMission(uploadMissionTimeOut);
+    if (ret != ErrorCode::SysCommonErr::Success)
+        return ret;
+    sleep(mFunctionTimeout);
+
+    /*! download mission */
+    std::vector<WaypointV2> mission;
+    ret = downloadWaypointMission(mission);
+    if (ret != ErrorCode::SysCommonErr::Success)
+        return ret;
+    sleep(mFunctionTimeout);
+
+    /*! upload  actions */
+    /*! check action memory */
+    ret = getActionRemainMemory(actionMemory);
+    if (actionMemory.remainMemory <= 0)
+    {
+        DSTATUS("action memory is not enough.Can not upload more action!");
+        return ErrorCode::SysCommonErr::UndefinedError;
+    }
+
+    ret = uploadWapointActions();
+    if (ret != ErrorCode::SysCommonErr::Success)
+        return ret;
+
+    ret = getActionRemainMemory(actionMemory);
+    sleep(mFunctionTimeout);
+
+    /*! start mission */
+    ret = startWaypointMission();
+    if (ret != ErrorCode::SysCommonErr::Success)
+        return ret;
+    sleep(20);
+
+    /*! set global cruise speed */
+    setGlobalCruiseSpeed(1.5);
+    sleep(mFunctionTimeout);
+
+    /*! get global cruise speed */
+    getGlobalCruiseSpeed();
+    sleep(mFunctionTimeout);
+
+    /*! pause the mission*/
+    ret = pauseWaypointMission();
+    if (ret != ErrorCode::SysCommonErr::Success)
+        return ret;
+    sleep(5);
+
+    /*! resume the mission*/
+    ret = resumeWaypointMission();
+    if (ret != ErrorCode::SysCommonErr::Success)
+        return ret;
+    sleep(50);
+    /*! Set up telemetry subscription*/
+    if (!teardownSubscription(pkgIndex))
+    {
+        std::cout << "Failed to tear down Subscription!" << std::endl;
+        return ErrorCode::SysCommonErr::UndefinedError;
+    }
+
+    return ErrorCode::SysCommonErr::Success;
+}
+
+ErrorCode::ErrorCodeType DroneFlightControlTask::initMissionSetting()
+{
+
+    uint16_t polygonNum = 6;
+    float32_t radius = 6;
+
+    uint16_t actionNum = 5;
+    srand(int(time(0)));
+
+    /*! Generate waypoints*/
+
+    /*! Generate actions*/
+    mActions = generateWaypointActions(actionNum);
+
+    /*! Init waypoint settings*/
+    WayPointV2InitSettings missionInitSettings;
+    missionInitSettings.missionID = rand();
+    missionInitSettings.repeatTimes = 1;
+    missionInitSettings.finishedAction = DJIWaypointV2MissionFinishedGoHome;
+    missionInitSettings.maxFlightSpeed = 10;
+    missionInitSettings.autoFlightSpeed = 2;
+    missionInitSettings.exitMissionOnRCSignalLost = 1;
+    missionInitSettings.gotoFirstWaypointMode = DJIWaypointV2MissionGotoFirstWaypointModePointToPoint;
+    missionInitSettings.mission = generatePolygonWaypoints(radius, polygonNum);
+    missionInitSettings.missTotalLen = missionInitSettings.mission.size();
+
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->init(&missionInitSettings,
+                                                                           mFunctionTimeout);
+    if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("Init mission setting ErrorCode:0x%lX", ret);
+        ErrorCode::printErrorCodeMsg(ret);
+        return ret;
+    }
+    else
+    {
+        DSTATUS("Init mission setting successfully!");
+    }
+    return ret;
+}
+
+std::vector<DJIWaypointV2Action> DroneFlightControlTask::generateWaypointActions(uint16_t actionNum)
+{
+    std::vector<DJIWaypointV2Action> actionVector;
+
+    for (uint16_t i = 0; i < actionNum; i++)
+    {
+        DJIWaypointV2SampleReachPointTriggerParam sampleReachPointTriggerParam;
+        sampleReachPointTriggerParam.waypointIndex = i;
+        sampleReachPointTriggerParam.terminateNum = 0;
+
+        auto trigger = DJIWaypointV2Trigger(DJIWaypointV2ActionTriggerTypeSampleReachPoint, &sampleReachPointTriggerParam);
+        auto cameraActuatorParam = DJIWaypointV2CameraActuatorParam(DJIWaypointV2ActionActuatorCameraOperationTypeTakePhoto, nullptr);
+        auto actuator = DJIWaypointV2Actuator(DJIWaypointV2ActionActuatorTypeCamera, 0, &cameraActuatorParam);
+        auto action = DJIWaypointV2Action(i, trigger, actuator);
+        actionVector.push_back(action);
+    }
+    return actionVector;
+}
+
+std::vector<WaypointV2> DroneFlightControlTask::generatePolygonWaypoints(float32_t radius,
+                                                                         uint16_t polygonNum)
+{
+    // Let's create a vector to store our waypoints in.
+    std::vector<WaypointV2> waypointList;
+    WaypointV2 startPoint;
+    WaypointV2 waypointV2;
+
+    Telemetry::TypeMap<Telemetry::TOPIC_GPS_FUSED>::type
+        subscribeGPosition = mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
+    startPoint.latitude = subscribeGPosition.latitude;
+    startPoint.longitude = subscribeGPosition.longitude;
+    startPoint.relativeHeight = 15;
+    setWaypointV2Defaults(startPoint);
+    waypointList.push_back(startPoint);
+
+    // Iterative algorithm
+    for (int i = 0; i < polygonNum; i++)
+    {
+        float32_t angle = i * 2 * M_PI / polygonNum;
+        setWaypointV2Defaults(waypointV2);
+        float32_t X = radius * cos(angle);
+        float32_t Y = radius * sin(angle);
+        waypointV2.latitude = X / EARTH_RADIUS + startPoint.latitude;
+        waypointV2.longitude = Y / (EARTH_RADIUS * cos(startPoint.latitude)) + startPoint.longitude;
+        waypointV2.relativeHeight = startPoint.relativeHeight;
+        waypointList.push_back(waypointV2);
+    }
+    waypointList.push_back(startPoint);
+    return waypointList;
+}
+
+void DroneFlightControlTask::setWaypointV2Defaults(WaypointV2 &waypointV2)
+{
+
+    waypointV2.waypointType = DJIWaypointV2FlightPathModeGoToPointInAStraightLineAndStop;
+    waypointV2.headingMode = DJIWaypointV2HeadingModeAuto;
+    waypointV2.config.useLocalCruiseVel = 0;
+    waypointV2.config.useLocalMaxVel = 0;
+
+    waypointV2.dampingDistance = 40;
+    waypointV2.heading = 0;
+    waypointV2.turnMode = DJIWaypointV2TurnModeClockwise;
+
+    waypointV2.pointOfInterest.positionX = 0;
+    waypointV2.pointOfInterest.positionY = 0;
+    waypointV2.pointOfInterest.positionZ = 0;
+    waypointV2.maxFlightSpeed = 9;
+    waypointV2.autoFlightSpeed = 2;
+}
+
+void DroneFlightControlTask::obtainJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
+                                                           UserData userData)
 {
     if (errorCode == ErrorCode::FlightControllerErr::SetControlParam::ObtainJoystickCtrlAuthoritySuccess)
     {
@@ -696,12 +881,235 @@ void DroneFlightControlTask::obtainJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeT
     }
 }
 
-void DroneFlightControlTask::releaseJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode, UserData userData)
+void DroneFlightControlTask::releaseJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
+                                                            UserData userData)
 {
     if (errorCode == ErrorCode::FlightControllerErr::SetControlParam::ReleaseJoystickCtrlAuthoritySuccess)
     {
         DSTATUS("ReleaseJoystickCtrlAuthoritySuccess");
     }
+}
+
+ErrorCode::ErrorCodeType DroneFlightControlTask::uploadWaypointMission(int timeout)
+{
+    //  ErrorCode::ErrorCodeType ret = vehiclePtr->waypointV2Mission->uploadMission(this->mission,timeout);
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->uploadMission(mFunctionTimeout);
+    if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("Upload waypoint v2 mission ErrorCode:0x%lX", ret);
+        ErrorCode::printErrorCodeMsg(ret);
+        return ret;
+    }
+    else
+    {
+        DSTATUS("Upload waypoint v2 mission successfully!");
+    }
+    return ret;
+}
+
+ErrorCode::ErrorCodeType DroneFlightControlTask::downloadWaypointMission(std::vector<WaypointV2> &mission)
+{
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->downloadMission(mission, mFunctionTimeout);
+    if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("Download waypoint v2 mission ErrorCode:0x%lX", ret);
+        ErrorCode::printErrorCodeMsg(ret);
+        return ret;
+    }
+    else
+    {
+        DSTATUS("Download waypoint v2 mission successfully!");
+    }
+    return ret;
+}
+
+ErrorCode::ErrorCodeType DroneFlightControlTask::getActionRemainMemory(GetRemainRamAck &actionMemory)
+{
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->getActionRemainMemory(actionMemory,
+                                                                                            mFunctionTimeout);
+    if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("get waypoint v2 action remain memory failed:0x%lX", ret);
+        ErrorCode::printErrorCodeMsg(ret);
+        return ret;
+    }
+    else
+    {
+        DSTATUS("get waypoint v2 action remain memory successfully!");
+    }
+    return ret;
+}
+
+ErrorCode::ErrorCodeType DroneFlightControlTask::uploadWapointActions()
+{
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->uploadAction(mActions,
+                                                                                   mFunctionTimeout);
+    if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("Upload waypoint v2 actions ErrorCode:0x%lX", ret);
+        ErrorCode::printErrorCodeMsg(ret);
+        return ret;
+    }
+    else
+    {
+        DSTATUS("Upload waypoint v2 actions successfully!");
+    }
+    return ret;
+}
+
+ErrorCode::ErrorCodeType DroneFlightControlTask::startWaypointMission()
+{
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->start(mFunctionTimeout);
+    if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("Start waypoint v2 mission ErrorCode:0x%lX", ret);
+        ErrorCode::printErrorCodeMsg(ret);
+        return ret;
+    }
+    else
+    {
+        DSTATUS("Start waypoint v2 mission successfully!");
+    }
+    return ret;
+}
+
+ErrorCode::ErrorCodeType DroneFlightControlTask::stopWaypointMission()
+{
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->stop(mFunctionTimeout);
+    return ret;
+}
+
+ErrorCode::ErrorCodeType DroneFlightControlTask::pauseWaypointMission()
+{
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->pause(mFunctionTimeout);
+    if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("Pause waypoint v2 mission ErrorCode:0x%lX", ret);
+        ErrorCode::printErrorCodeMsg(ret);
+        return ret;
+    }
+    else
+    {
+        DSTATUS("Pause waypoint v2 mission successfully!");
+    }
+    sleep(5);
+    return ret;
+}
+
+ErrorCode::ErrorCodeType DroneFlightControlTask::resumeWaypointMission()
+{
+
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->resume(mFunctionTimeout);
+    if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("Resume Waypoint v2 mission ErrorCode:0x%lX", ret);
+        ErrorCode::printErrorCodeMsg(ret);
+        return ret;
+    }
+    else
+    {
+        DSTATUS("Resume Waypoint v2 mission successfully!");
+    }
+    return ret;
+}
+
+void DroneFlightControlTask::getGlobalCruiseSpeed()
+{
+    GlobalCruiseSpeed cruiseSpeed = 0;
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->getGlobalCruiseSpeed(cruiseSpeed,
+                                                                                           mFunctionTimeout);
+    if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("Get glogal cruise speed failed ErrorCode:0x%lX", ret);
+        ErrorCode::printErrorCodeMsg(ret);
+        return;
+    }
+    DSTATUS("Current cruise speed is: %f m/s", cruiseSpeed);
+}
+
+void DroneFlightControlTask::setGlobalCruiseSpeed(const GlobalCruiseSpeed &cruiseSpeed)
+{
+    ErrorCode::ErrorCodeType ret = mSetup.vehicle->waypointV2Mission->setGlobalCruiseSpeed(cruiseSpeed,
+                                                                                           mFunctionTimeout);
+    if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("Set glogal cruise speed %f m/s failed ErrorCode:0x%lX", cruiseSpeed, ret);
+        ErrorCode::printErrorCodeMsg(ret);
+        return;
+    }
+    DSTATUS("Current cruise speed is: %f m/s", cruiseSpeed);
+}
+
+//10HZ push ;1HZ print
+E_OsdkStat
+DroneFlightControlTask::updateMissionState(T_CmdHandle *cmdHandle, const T_CmdInfo *cmdInfo,
+                                           const uint8_t *cmdData, void *userData)
+{
+    if (cmdInfo)
+    {
+        if (userData)
+        {
+            auto *wp2Ptr = (WaypointV2MissionOperator *)userData;
+            auto *missionStatePushAck =
+                (DJI::OSDK::MissionStatePushAck *)cmdData;
+
+            wp2Ptr->setCurrentState(wp2Ptr->getCurrentState());
+            wp2Ptr->setCurrentState((DJI::OSDK::DJIWaypointV2MissionState)missionStatePushAck->data.state);
+            static uint32_t curMs = 0;
+            static uint32_t preMs = 0;
+            OsdkOsal_GetTimeMs(&curMs);
+            if (curMs - preMs >= 1000)
+            {
+                preMs = curMs;
+                DSTATUS("missionStatePushAck->commonDataVersion:%d", missionStatePushAck->commonDataVersion);
+                DSTATUS("missionStatePushAck->commonDataLen:%d", missionStatePushAck->commonDataLen);
+                DSTATUS("missionStatePushAck->data.state:0x%x", missionStatePushAck->data.state);
+                DSTATUS("missionStatePushAck->data.curWaypointIndex:%d", missionStatePushAck->data.curWaypointIndex);
+                DSTATUS("missionStatePushAck->data.velocity:%d", missionStatePushAck->data.velocity);
+            }
+        }
+        else
+        {
+            DERROR("cmdInfo is a null value");
+        }
+        return OSDK_STAT_OK;
+    }
+    return OSDK_STAT_ERR_ALLOC;
+}
+
+/*! only push 0x00,0x10,0x11 event*/
+E_OsdkStat
+DroneFlightControlTask::updateMissionEvent(T_CmdHandle *cmdHandle, const T_CmdInfo *cmdInfo,
+                                           const uint8_t *cmdData, void *userData)
+{
+    if (cmdInfo)
+    {
+        if (userData)
+        {
+            auto *MissionEventPushAck =
+                (DJI::OSDK::MissionEventPushAck *)cmdData;
+
+            DSTATUS("MissionEventPushAck->event ID :0x%x", MissionEventPushAck->event);
+
+            if (MissionEventPushAck->event == 0x01)
+                DSTATUS("interruptReason:0x%x", MissionEventPushAck->data.interruptReason);
+            if (MissionEventPushAck->event == 0x02)
+                DSTATUS("recoverProcess:0x%x", MissionEventPushAck->data.recoverProcess);
+            if (MissionEventPushAck->event == 0x03)
+                DSTATUS("finishReason:0x%x", MissionEventPushAck->data.finishReason);
+
+            if (MissionEventPushAck->event == 0x10)
+                DSTATUS("current waypointIndex:%d", MissionEventPushAck->data.waypointIndex);
+
+            if (MissionEventPushAck->event == 0x11)
+            {
+                DSTATUS("currentMissionExecNum:%d", MissionEventPushAck->data.MissionExecEvent.currentMissionExecNum);
+            }
+
+            return OSDK_STAT_OK;
+        }
+    }
+    return OSDK_STAT_SYS_ERR;
 }
 
 E_OsdkStat
