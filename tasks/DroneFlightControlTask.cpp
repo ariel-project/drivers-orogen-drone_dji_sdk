@@ -54,6 +54,15 @@ bool DroneFlightControlTask::configureHook()
                                                                        nullptr,
                                                                        mFunctionTimeout,
                                                                        2);
+    FlightController::JoystickMode joystickMode = {
+        FlightController::HorizontalLogic::HORIZONTAL_POSITION,
+        FlightController::VerticalLogic::VERTICAL_POSITION,
+        FlightController::YawLogic::YAW_ANGLE,
+        FlightController::HorizontalCoordinate::HORIZONTAL_GROUND,
+        FlightController::StableMode::STABLE_ENABLE,
+    };
+    mSetup.vehicle->flightController->setJoystickMode(joystickMode);
+
     return true;
 }
 
@@ -339,14 +348,14 @@ bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &off
         mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
     Telemetry::GlobalPosition currentBroadcastGP = mSetup.vehicle->broadcast->getGlobalPosition();
     float32_t originHeightBaseHomepoint = currentBroadcastGP.height;
-    FlightController::JoystickMode joystickMode = {
-        FlightController::HorizontalLogic::HORIZONTAL_POSITION,
-        FlightController::VerticalLogic::VERTICAL_POSITION,
-        FlightController::YawLogic::YAW_ANGLE,
-        FlightController::HorizontalCoordinate::HORIZONTAL_GROUND,
-        FlightController::StableMode::STABLE_ENABLE,
-    };
-    mSetup.vehicle->flightController->setJoystickMode(joystickMode);
+    // FlightController::JoystickMode joystickMode = {
+    //     FlightController::HorizontalLogic::HORIZONTAL_POSITION,
+    //     FlightController::VerticalLogic::VERTICAL_POSITION,
+    //     FlightController::YawLogic::YAW_ANGLE,
+    //     FlightController::HorizontalCoordinate::HORIZONTAL_GROUND,
+    //     FlightController::StableMode::STABLE_ENABLE,
+    // };
+    // mSetup.vehicle->flightController->setJoystickMode(joystickMode);
 
     while (elapsedTimeInMs < timeoutInMilSec)
     {

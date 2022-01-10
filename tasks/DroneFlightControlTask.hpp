@@ -139,8 +139,8 @@ namespace drone_dji_sdk
 
         /** Monitored Landing (Blocking API call). 
          * Return status as well as ack.
-         * This version of takeoff makes sure your aircraft actually took off
-         * and only returns when takeoff is complete.
+         * This version of takeoff makes sure your aircraft landing
+         * and only returns when landing is complete.
          */
         bool monitoredLanding();
 
