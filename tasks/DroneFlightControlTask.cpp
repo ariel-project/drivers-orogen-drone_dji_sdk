@@ -25,44 +25,41 @@ bool DroneFlightControlTask::configureHook()
 {
     if (!DroneFlightControlTaskBase::configureHook())
         return false;
-    // AdvancedSensing = false
-    mSetup = Setup(false);
+
+    // Init class members
+    mFunctionTimeout = 1; // second
+    mPosThresholdInM = 0.8;
+    mYawThresholdInDeg = 1;
+
+    // Setup environment and init vehicle
+    mSetup = Setup(false); // AdvancedSensing = false
     if (mSetup.vehicle == NULL)
     {
         std::cout << "Vehicle not initialized, exiting.\n";
     }
-    mFunctionTimeout = 1; // second
-    mPosThresholdInM = 0.8;
-    mYawThresholdInDeg = 1;
     setupEnvironment();
     if (!initVehicle())
         return false;
     if (!checkTelemetrySubscription())
         return false;
 
-    /*! init mission settings*/
+    // Init controller and set joystick mode
+    setupController();
+
+    // init mission settings and register
     if (initMissionSetting() != ErrorCode::SysCommonErr::Success)
         return false;
-
     // Register mission events and states
     mSetup.vehicle->waypointV2Mission->RegisterMissionEventCallback(mSetup.vehicle->waypointV2Mission,
                                                                     updateMissionEvent);
     mSetup.vehicle->waypointV2Mission->RegisterMissionStateCallback(mSetup.vehicle->waypointV2Mission,
                                                                     updateMissionState);
+
     // Obtain Control Authority
     mSetup.vehicle->flightController->obtainJoystickCtrlAuthorityAsync(obtainJoystickCtrlAuthorityCB,
                                                                        nullptr,
                                                                        mFunctionTimeout,
                                                                        2);
-    FlightController::JoystickMode joystickMode = {
-        FlightController::HorizontalLogic::HORIZONTAL_POSITION,
-        FlightController::VerticalLogic::VERTICAL_POSITION,
-        FlightController::YawLogic::YAW_ANGLE,
-        FlightController::HorizontalCoordinate::HORIZONTAL_GROUND,
-        FlightController::StableMode::STABLE_ENABLE,
-    };
-    mSetup.vehicle->flightController->setJoystickMode(joystickMode);
-
     return true;
 }
 
@@ -138,6 +135,19 @@ void DroneFlightControlTask::setupEnvironment()
     {
         throw std::runtime_error("Osal handler register fail");
     }
+}
+
+void DroneFlightControlTask::setupController()
+{
+    mFlightController = new FlightController(mSetup.vehicle);
+    FlightController::JoystickMode joystickMode = {
+        FlightController::HorizontalLogic::HORIZONTAL_POSITION,
+        FlightController::VerticalLogic::VERTICAL_POSITION,
+        FlightController::YawLogic::YAW_ANGLE,
+        FlightController::HorizontalCoordinate::HORIZONTAL_GROUND,
+        FlightController::StableMode::STABLE_ENABLE,
+    };
+    mSetup.vehicle->flightController->setJoystickMode(joystickMode);
 }
 
 bool DroneFlightControlTask::initVehicle()
@@ -348,14 +358,6 @@ bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &off
         mSetup.vehicle->subscribe->getValue<Telemetry::TOPIC_GPS_FUSED>();
     Telemetry::GlobalPosition currentBroadcastGP = mSetup.vehicle->broadcast->getGlobalPosition();
     float32_t originHeightBaseHomepoint = currentBroadcastGP.height;
-    // FlightController::JoystickMode joystickMode = {
-    //     FlightController::HorizontalLogic::HORIZONTAL_POSITION,
-    //     FlightController::VerticalLogic::VERTICAL_POSITION,
-    //     FlightController::YawLogic::YAW_ANGLE,
-    //     FlightController::HorizontalCoordinate::HORIZONTAL_GROUND,
-    //     FlightController::StableMode::STABLE_ENABLE,
-    // };
-    // mSetup.vehicle->flightController->setJoystickMode(joystickMode);
 
     while (elapsedTimeInMs < timeoutInMilSec)
     {

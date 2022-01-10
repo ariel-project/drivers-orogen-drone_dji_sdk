@@ -127,6 +127,7 @@ namespace drone_dji_sdk
         float mYawThresholdInDeg;
         Vehicle::ActivateData mActivateData;
         DJI::OSDK::Setup mSetup;
+        DJI::OSDK::FlightController* mFlightController;
         std::vector<DJIWaypointV2Action> mActions;
 
         /** Monitored Takeoff
@@ -201,6 +202,7 @@ namespace drone_dji_sdk
         template <typename Type>
         static int signOfData(Type type);
 
+        void setupController();
         void setupEnvironment();
         bool initVehicle();
         bool checkTelemetrySubscription();
