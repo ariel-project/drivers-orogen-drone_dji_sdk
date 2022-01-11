@@ -207,6 +207,10 @@ namespace drone_dji_sdk
         bool initVehicle();
         bool checkTelemetrySubscription();
 
+        static void
+        startAsyncCmdCallBack(ErrorCode::ErrorCodeType retCode,
+                              UserData SampleLog);
+
         static E_OsdkStat
         updateMissionState(T_CmdHandle *cmdHandle,
                            const T_CmdInfo *cmdInfo,

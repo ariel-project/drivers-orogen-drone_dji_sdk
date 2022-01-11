@@ -54,7 +54,6 @@ bool DroneFlightControlTask::configureHook()
                                                                     updateMissionEvent);
     mSetup.vehicle->waypointV2Mission->RegisterMissionStateCallback(mSetup.vehicle->waypointV2Mission,
                                                                     updateMissionState);
-
     // Obtain Control Authority
     mSetup.vehicle->flightController->obtainJoystickCtrlAuthorityAsync(obtainJoystickCtrlAuthorityCB,
                                                                        nullptr,
@@ -242,9 +241,8 @@ bool DroneFlightControlTask::monitoredTakeoff()
 {
     int pkgIndex = 0;
     //! Start takeoff
-    //ErrorCode::ErrorCodeType takeoffStatus =
-    mSetup.vehicle->flightController->startTakeoffSync(mFunctionTimeout);
-
+    mSetup.vehicle->flightController->startTakeoffAsync(startAsyncCmdCallBack,
+                                                        (UserData) "start to takeoff");
     //! Motors start check
     if (!motorStartedCheck())
     {
@@ -290,16 +288,8 @@ bool DroneFlightControlTask::monitoredLanding()
 {
     int pkgIndex = 0;
     /*! Start landing */
-    DSTATUS("Start landing action");
-    ErrorCode::ErrorCodeType landingErrCode =
-        mSetup.vehicle->flightController->startLandingSync(mFunctionTimeout);
-    if (landingErrCode != ErrorCode::SysCommonErr::Success)
-    {
-        DERROR("Fail to execute landing action! Error code: "
-               "%llx\n ",
-               landingErrCode);
-        return false;
-    }
+    mSetup.vehicle->flightController->startLandingAsync(startAsyncCmdCallBack,
+                                                        (UserData) "start to landing");
 
     /*! Step 3: check Landing start*/
     if (!checkActionStarted(VehicleStatus::DisplayMode::MODE_AUTO_LANDING))
@@ -430,6 +420,21 @@ bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &off
     }
     teardownSubscription(pkgIndex);
     return true;
+}
+
+void DroneFlightControlTask::startAsyncCmdCallBack(ErrorCode::ErrorCodeType retCode,
+                                                   UserData SampleLog)
+{
+    DSTATUS("retCode : 0x%lX", retCode);
+    if (retCode == ErrorCode::SysCommonErr::Success)
+    {
+        DSTATUS("Pass : %s.", SampleLog);
+    }
+    else
+    {
+        DERROR("Error : %s. Error code : %d", SampleLog, retCode);
+        ErrorCode::printErrorCodeMsg(retCode);
+    }
 }
 
 bool DroneFlightControlTask::setUpSubscription(int pkgIndex, int freq,
