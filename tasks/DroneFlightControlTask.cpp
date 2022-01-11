@@ -28,8 +28,6 @@ bool DroneFlightControlTask::configureHook()
 
     // Init class members
     mFunctionTimeout = 1; // second
-    mPosThresholdInM = 0.8;
-    mYawThresholdInDeg = 1;
 
     // Setup environment and init vehicle
     mSetup = Setup(false); // AdvancedSensing = false
@@ -69,8 +67,85 @@ bool DroneFlightControlTask::startHook()
     return true;
 }
 
+typedef DroneFlightControlTask::States TaskState;
+static TaskState checkState(uint8_t status)
+{
+    switch (status)
+    {
+    case 0:
+        return TaskState::DJI_STOPPED;
+    case 1:
+        return TaskState::DJI_ON_GROUND;
+    case 2:
+        return TaskState::DJI_IN_AIR;
+    }
+    // Never reached
+    throw std::invalid_argument("invalid controller state");
+}
+
 void DroneFlightControlTask::updateHook()
 {
+    // cmd input
+    int cmd_input;
+    if (_cmd_input.read(cmd_input) != RTT::NoData)
+        return;
+    // setpoint inputs
+    base::Vector3d setpoint_position;
+    base::Vector3d setpoint_orientation;
+    if (_setpoint_position.read(setpoint_position) != RTT::NewData ||
+        _setpoint_orientation.read(setpoint_orientation) != RTT::NewData)
+        return;
+
+    // Check status
+    DroneFlightControlTask::States status;
+    status = checkState(mSetup.vehicle->broadcast->getStatus().flight);
+    if (state() != status)
+    {
+        state(status);
+    }
+
+    if (status == DroneFlightControlTask::States::DJI_STOPPED ||
+        status == DroneFlightControlTask::States::DJI_ON_GROUND)
+    {
+        if (cmd_input == drone_dji_sdk::BUTTON_ACTION::TAKEOFF_ACTIVATE)
+        {
+            monitoredTakeoff();
+            // move to a desired position just after takeoff
+            Telemetry::Vector3f takeoff_setpoint = {(float)setpoint_position[0],
+                                                    (float)setpoint_position[1],
+                                                    (float)setpoint_position[2]};
+            moveByPositionOffset(takeoff_setpoint,
+                                 (float)setpoint_orientation[2]);
+        }
+    }
+    else
+    {
+        // As we are in the air: we gonna landing, moving to a setpoint or doing a mission
+        if (cmd_input == drone_dji_sdk::BUTTON_ACTION::LANDING_ACTIVATE)
+        {
+            // move to a desired position just before landing
+            Telemetry::Vector3f landing_setpoint = {(float)setpoint_position[0],
+                                                    (float)setpoint_position[1],
+                                                    (float)setpoint_position[2]};
+            moveByPositionOffset(landing_setpoint,
+                                 (float)setpoint_orientation[2]);
+            monitoredLanding();
+        }
+        else if (cmd_input == drone_dji_sdk::BUTTON_ACTION::CONTROL_ACTIVATE)
+        {
+            // position setpoint
+            Telemetry::Vector3f position_setpoint = {(float)setpoint_position[0],
+                                                     (float)setpoint_position[1],
+                                                     (float)setpoint_position[2]};
+            moveByPositionOffset(position_setpoint,
+                                 (float)setpoint_orientation[2]);
+        }
+        else if (cmd_input == drone_dji_sdk::BUTTON_ACTION::MISSION_ACTIVATE)
+        {
+            runWaypointV2Mission();
+        }
+    }
+
     DroneFlightControlTaskBase::updateHook();
 }
 void DroneFlightControlTask::errorHook()
@@ -332,6 +407,9 @@ bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &off
     int brakeCounter = 0;
     int speedFactor = 2;
     int pkgIndex = 0;
+    float posThresholdInM = 0.8;
+    float yawThresholdInDeg = 1;
+
 
     /* now we need position-height broadcast to obtain the real-time altitude of the aircraft, 
    * which is consistent with the altitude closed-loop data of flight control internal position control
@@ -375,8 +453,8 @@ bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &off
 
         mSetup.vehicle->flightController->joystickAction();
 
-        if (vectorNorm(offsetRemaining) < mPosThresholdInM &&
-            std::fabs(yawInRad / DEG2RAD - yawDesiredInDeg) < mYawThresholdInDeg)
+        if (vectorNorm(offsetRemaining) < posThresholdInM &&
+            std::fabs(yawInRad / DEG2RAD - yawDesiredInDeg) < yawThresholdInDeg)
         {
             //! 1. We are within bounds; start incrementing our in-bound counter
             withinBoundsCounter += cycleTimeInMs;

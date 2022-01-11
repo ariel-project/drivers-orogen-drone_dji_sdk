@@ -123,8 +123,6 @@ namespace drone_dji_sdk
     private:
 
         uint32_t mFunctionTimeout;
-        float mPosThresholdInM;
-        float mYawThresholdInDeg;
         Vehicle::ActivateData mActivateData;
         DJI::OSDK::Setup mSetup;
         DJI::OSDK::FlightController* mFlightController;

@@ -8,8 +8,16 @@
  * which case you do not need this file
  */
 
-namespace drone_dji_sdk {
+namespace drone_dji_sdk
+{
+    enum BUTTON_ACTION
+    {
+        TAKEOFF_ACTIVATE,
+        LANDING_ACTIVATE,
+        CONTROL_ACTIVATE,
+        MISSION_ACTIVATE
+    };
+
 }
 
 #endif
-

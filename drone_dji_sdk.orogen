@@ -4,6 +4,7 @@ using_library "dji_sdk"
 
 import_types_from "drone_dji_sdkTypes.hpp"
 import_types_from "std"
+import_types_from "base"
 
 task_context "DroneFlightControlTask" do
 
@@ -15,8 +16,11 @@ task_context "DroneFlightControlTask" do
     property "baudrate", "/uint32_t", 230_400
     property "acm_port", "/std/string", "/dev/ttyACM0"
 
-    input_port "input", "/std/string"
-    output_port "output", "int"
+    input_port "cmd_input", "/int"
+    input_port "setpoint_position", "base/Vector3d"
+    input_port "setpoint_orientation", "base/Vector3d"
+
+    runtime_states :DJI_STOPPED, :DJI_ON_GROUND, :DJI_IN_AIR
 
     port_driven
 end
