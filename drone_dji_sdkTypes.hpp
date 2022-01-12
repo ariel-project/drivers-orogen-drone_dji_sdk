@@ -8,6 +8,8 @@
  * which case you do not need this file
  */
 
+#include <base/Eigen.hpp>
+#include <base/Angle.hpp>
 namespace drone_dji_sdk
 {
     enum BUTTON_ACTION
@@ -17,7 +19,11 @@ namespace drone_dji_sdk
         CONTROL_ACTIVATE,
         MISSION_ACTIVATE
     };
-
+    struct VehicleSetpoint
+    {
+        base::Vector3d setpoint;
+        base::Angle heading;
+    };
 }
 
 #endif

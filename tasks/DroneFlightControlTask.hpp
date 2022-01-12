@@ -123,6 +123,8 @@ namespace drone_dji_sdk
     private:
 
         uint32_t mFunctionTimeout;
+        int mControlFreqInHz;
+        int mStatusFreqInHz;
         Vehicle::ActivateData mActivateData;
         DJI::OSDK::Setup mSetup;
         DJI::OSDK::FlightController* mFlightController;
@@ -204,6 +206,8 @@ namespace drone_dji_sdk
         void setupEnvironment();
         bool initVehicle();
         bool checkTelemetrySubscription();
+
+        base::samples::RigidBodyState getRigidBodyState();
 
         static void
         startAsyncCmdCallBack(ErrorCode::ErrorCodeType retCode,

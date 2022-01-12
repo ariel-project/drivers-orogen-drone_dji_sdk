@@ -16,9 +16,11 @@ task_context "DroneFlightControlTask" do
     property "baudrate", "/uint32_t", 230_400
     property "acm_port", "/std/string", "/dev/ttyACM0"
 
-    input_port "cmd_input", "/int"
-    input_port "setpoint_position", "base/Vector3d"
-    input_port "setpoint_orientation", "base/Vector3d"
+    input_port "cmd_input", "drone_dji_sdk/BUTTON_ACTION"
+    input_port "cmd_pos", "drone_dji_sdk/VehicleSetpoint"
+
+    output_port "pose_samples", "/base/samples/RigidBodyState"
+    output_port "battery_percentage", "/int"
 
     runtime_states :DJI_STOPPED, :DJI_ON_GROUND, :DJI_IN_AIR
 

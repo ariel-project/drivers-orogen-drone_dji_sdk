@@ -27,14 +27,15 @@ bool DroneFlightControlTask::configureHook()
         return false;
 
     // Init class members
-    mFunctionTimeout = 1; // second
+    mFunctionTimeout = 1;  // second
+    mControlFreqInHz = 50; // Hz
+    mStatusFreqInHz = 10;  // Hz
 
     // Setup environment and init vehicle
     mSetup = Setup(false); // AdvancedSensing = false
     if (mSetup.vehicle == NULL)
-    {
-        std::cout << "Vehicle not initialized, exiting.\n";
-    }
+        DSTATUS("Vehicle not initialized, exiting.");
+
     setupEnvironment();
     if (!initVehicle())
         return false;
@@ -52,11 +53,6 @@ bool DroneFlightControlTask::configureHook()
                                                                     updateMissionEvent);
     mSetup.vehicle->waypointV2Mission->RegisterMissionStateCallback(mSetup.vehicle->waypointV2Mission,
                                                                     updateMissionState);
-    // Obtain Control Authority
-    mSetup.vehicle->flightController->obtainJoystickCtrlAuthorityAsync(obtainJoystickCtrlAuthorityCB,
-                                                                       nullptr,
-                                                                       mFunctionTimeout,
-                                                                       2);
     return true;
 }
 
@@ -64,6 +60,12 @@ bool DroneFlightControlTask::startHook()
 {
     if (!DroneFlightControlTaskBase::startHook())
         return false;
+
+    // Obtain Control Authority
+    mSetup.vehicle->flightController->obtainJoystickCtrlAuthorityAsync(obtainJoystickCtrlAuthorityCB,
+                                                                       nullptr,
+                                                                       mFunctionTimeout,
+                                                                       2);
     return true;
 }
 
@@ -86,23 +88,19 @@ static TaskState checkState(uint8_t status)
 void DroneFlightControlTask::updateHook()
 {
     // cmd input
-    int cmd_input;
+    BUTTON_ACTION cmd_input;
     if (_cmd_input.read(cmd_input) != RTT::NoData)
         return;
     // setpoint inputs
-    base::Vector3d setpoint_position;
-    base::Vector3d setpoint_orientation;
-    if (_setpoint_position.read(setpoint_position) != RTT::NewData ||
-        _setpoint_orientation.read(setpoint_orientation) != RTT::NewData)
+    VehicleSetpoint cmd_pos;
+    if (_cmd_pos.read(cmd_pos) != RTT::NewData)
         return;
 
     // Check status
     DroneFlightControlTask::States status;
     status = checkState(mSetup.vehicle->broadcast->getStatus().flight);
     if (state() != status)
-    {
         state(status);
-    }
 
     if (status == DroneFlightControlTask::States::DJI_STOPPED ||
         status == DroneFlightControlTask::States::DJI_ON_GROUND)
@@ -111,11 +109,11 @@ void DroneFlightControlTask::updateHook()
         {
             monitoredTakeoff();
             // move to a desired position just after takeoff
-            Telemetry::Vector3f takeoff_setpoint = {(float)setpoint_position[0],
-                                                    (float)setpoint_position[1],
-                                                    (float)setpoint_position[2]};
+            Telemetry::Vector3f takeoff_setpoint = {(float)cmd_pos.setpoint[0],
+                                                    (float)cmd_pos.setpoint[1],
+                                                    (float)cmd_pos.setpoint[2]};
             moveByPositionOffset(takeoff_setpoint,
-                                 (float)setpoint_orientation[2]);
+                                 (float)cmd_pos.heading.rad);
         }
     }
     else
@@ -124,27 +122,33 @@ void DroneFlightControlTask::updateHook()
         if (cmd_input == drone_dji_sdk::BUTTON_ACTION::LANDING_ACTIVATE)
         {
             // move to a desired position just before landing
-            Telemetry::Vector3f landing_setpoint = {(float)setpoint_position[0],
-                                                    (float)setpoint_position[1],
-                                                    (float)setpoint_position[2]};
+            Telemetry::Vector3f landing_setpoint = {(float)cmd_pos.setpoint[0],
+                                                    (float)cmd_pos.setpoint[1],
+                                                    (float)cmd_pos.setpoint[2]};
             moveByPositionOffset(landing_setpoint,
-                                 (float)setpoint_orientation[2]);
+                                 (float)cmd_pos.heading.rad);
             monitoredLanding();
         }
         else if (cmd_input == drone_dji_sdk::BUTTON_ACTION::CONTROL_ACTIVATE)
         {
             // position setpoint
-            Telemetry::Vector3f position_setpoint = {(float)setpoint_position[0],
-                                                     (float)setpoint_position[1],
-                                                     (float)setpoint_position[2]};
+            Telemetry::Vector3f position_setpoint = {(float)cmd_pos.setpoint[0],
+                                                     (float)cmd_pos.setpoint[1],
+                                                     (float)cmd_pos.setpoint[2]};
             moveByPositionOffset(position_setpoint,
-                                 (float)setpoint_orientation[2]);
+                                 (float)cmd_pos.heading.rad);
         }
         else if (cmd_input == drone_dji_sdk::BUTTON_ACTION::MISSION_ACTIVATE)
-        {
             runWaypointV2Mission();
-        }
     }
+    // get vehicle states
+    base::samples::RigidBodyState cmd;
+    cmd = getRigidBodyState();
+    int battery;
+    battery = mSetup.vehicle->broadcast->getBatteryInfo().percentage;
+
+    _pose_samples.write(cmd);
+    _battery_percentage.write(battery);
 
     DroneFlightControlTaskBase::updateHook();
 }
@@ -162,6 +166,11 @@ void DroneFlightControlTask::stopHook()
 }
 void DroneFlightControlTask::cleanupHook()
 {
+    int pkgIndex = 0;
+    /*! Telemetry subscription*/
+    if (!teardownSubscription(pkgIndex))
+        DERROR("Failed to tear down Subscription!");
+
     DroneFlightControlTaskBase::cleanupHook();
 }
 
@@ -175,9 +184,8 @@ void DroneFlightControlTask::setupEnvironment()
         DroneFlightControlTask::OsdkUser_Console,
     };
     if (DJI_REG_LOGGER_CONSOLE(&printConsole) != true)
-    {
         throw std::runtime_error("logger console register fail");
-    }
+
     static T_OsdkHalUartHandler halUartHandler = {
         DroneFlightControlTask::OsdkLinux_UartInit,
         DroneFlightControlTask::OsdkLinux_UartSendData,
@@ -185,9 +193,8 @@ void DroneFlightControlTask::setupEnvironment()
         DroneFlightControlTask::OsdkLinux_UartClose,
     };
     if (DJI_REG_UART_HANDLER(&halUartHandler) != true)
-    {
         throw std::runtime_error("Uart handler register fail");
-    }
+
     static T_OsdkOsalHandler osalHandler = {
         DroneFlightControlTask::OsdkLinux_TaskCreate,
         DroneFlightControlTask::OsdkLinux_TaskDestroy,
@@ -206,9 +213,7 @@ void DroneFlightControlTask::setupEnvironment()
         DroneFlightControlTask::OsdkLinux_Free,
     };
     if (DJI_REG_OSAL_HANDLER(&osalHandler) != true)
-    {
         throw std::runtime_error("Osal handler register fail");
-    }
 }
 
 void DroneFlightControlTask::setupController()
@@ -252,7 +257,6 @@ bool DroneFlightControlTask::initVehicle()
     if (!mSetup.linker)
     {
         DERROR("Linker get failed.");
-        // if (mSetup.vehicle) delete (mSetup.vehicle);
         mSetup.vehicle = nullptr;
         return false;
     }
@@ -260,8 +264,8 @@ bool DroneFlightControlTask::initVehicle()
     if (!mSetup.vehicle)
     {
         DERROR("Vehicle create failed.");
-        if (mSetup.vehicle)
-            delete (mSetup.vehicle);
+
+        delete (mSetup.vehicle);
         mSetup.vehicle = nullptr;
         return false;
     }
@@ -275,15 +279,13 @@ bool DroneFlightControlTask::initVehicle()
     if (ACK::getError(ack))
     {
         ACK::getErrorCodeMessage(ack, __func__);
-        if (mSetup.vehicle)
-            delete (mSetup.vehicle);
+        delete (mSetup.vehicle);
         mSetup.vehicle = nullptr;
         return false;
     }
     if (!mSetup.vehicle->isM300())
-    {
         mSetup.vehicle->setUSBFlightOn(true);
-    }
+
     return true;
 }
 
@@ -292,21 +294,17 @@ bool DroneFlightControlTask::checkTelemetrySubscription()
     /*! Verify and setup the subscription */
     // Status flight and status display mode
     const int pkgIndex = 0;
-    int freq = 10;
     Telemetry::TopicName topicList_1[] = {Telemetry::TOPIC_STATUS_FLIGHT, Telemetry::TOPIC_STATUS_DISPLAYMODE};
     int topicSize = sizeof(topicList_1) / sizeof(topicList_1[0]);
-    if (!setUpSubscription(pkgIndex, freq, topicList_1, topicSize))
-    {
+    if (!setUpSubscription(pkgIndex, mStatusFreqInHz, topicList_1, topicSize))
         return false;
-    }
+
     // Topic quaternion and GPS fused
-    int controlFreqInHz = 50; // Hz
     Telemetry::TopicName topicList_2[] = {Telemetry::TOPIC_QUATERNION, Telemetry::TOPIC_GPS_FUSED};
     int numTopic = sizeof(topicList_2) / sizeof(topicList_2[0]);
-    if (!setUpSubscription(pkgIndex, controlFreqInHz, topicList_2, numTopic))
-    {
+    if (!setUpSubscription(pkgIndex, mControlFreqInHz, topicList_2, numTopic))
         return false;
-    }
+
     /*! wait for subscription data come*/
     sleep(mFunctionTimeout);
     return true;
@@ -314,54 +312,42 @@ bool DroneFlightControlTask::checkTelemetrySubscription()
 
 bool DroneFlightControlTask::monitoredTakeoff()
 {
-    int pkgIndex = 0;
     //! Start takeoff
     mSetup.vehicle->flightController->startTakeoffAsync(startAsyncCmdCallBack,
                                                         (UserData) "start to takeoff");
     //! Motors start check
     if (!motorStartedCheck())
     {
-        std::cout << "Takeoff failed. Motors are not spinning." << std::endl;
-        teardownSubscription(pkgIndex);
+        DERROR("Takeoff failed. Motors are not spinning.");
         return false;
     }
     else
-    {
-        std::cout << "Motors spinning...\n";
-    }
+        DSTATUS("Motors spinning...");
+
     //! In air check
     if (!takeOffInAirCheck())
     {
-        std::cout << "Takeoff failed. Aircraft is still on the ground, but the "
-                     "motors are spinning."
-                  << std::endl;
-        teardownSubscription(pkgIndex);
+        DSTATUS("Takeoff failed. Aircraft is still on the ground, but the "
+                "motors are spinning.");
         return false;
     }
     else
-    {
-        std::cout << "Ascending...\n";
-    }
+        DSTATUS("Ascending...");
 
     //! Finished takeoff check
     if (takeoffFinishedCheck())
-    {
-        std::cout << "Successful takeoff!\n";
-    }
+        DSTATUS("Successful takeoff!");
     else
     {
-        std::cout << "Takeoff finished, but the aircraft is in an unexpected mode. "
-                     "Please connect DJI GO.\n";
-        teardownSubscription(pkgIndex);
+        DSTATUS("Takeoff finished, but the aircraft is in an unexpected mode."
+                "Please connect DJI GO.");
         return false;
     }
-    teardownSubscription(pkgIndex);
     return true;
 }
 
 bool DroneFlightControlTask::monitoredLanding()
 {
-    int pkgIndex = 0;
     /*! Start landing */
     mSetup.vehicle->flightController->startLandingAsync(startAsyncCmdCallBack,
                                                         (UserData) "start to landing");
@@ -376,20 +362,14 @@ bool DroneFlightControlTask::monitoredLanding()
     {
         /*! Step 4: check Landing finished*/
         if (this->landFinishedCheck())
-        {
             DSTATUS("Successful landing!");
-        }
         else
         {
             DERROR("Landing finished, but the aircraft is in an unexpected mode. "
                    "Please connect DJI Assistant.");
-            teardownSubscription(pkgIndex);
             return false;
         }
     }
-
-    /*! Step 5: Cleanup */
-    teardownSubscription(pkgIndex);
     return true;
 }
 
@@ -397,8 +377,7 @@ bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &off
                                                   float yawDesiredInDeg)
 {
     int timeoutInMilSec = 40000;
-    int controlFreqInHz = 50; // Hz
-    int cycleTimeInMs = 1000 / controlFreqInHz;
+    int cycleTimeInMs = 1000 / mControlFreqInHz;
     int outOfControlBoundsTimeLimit = 10 * cycleTimeInMs;   // 10 cycles
     int withinControlBoundsTimeReqmt = 100 * cycleTimeInMs; // 100 cycles
     int elapsedTimeInMs = 0;
@@ -406,19 +385,16 @@ bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &off
     int outOfBounds = 0;
     int brakeCounter = 0;
     int speedFactor = 2;
-    int pkgIndex = 0;
     float posThresholdInM = 0.8;
     float yawThresholdInDeg = 1;
-
 
     /* now we need position-height broadcast to obtain the real-time altitude of the aircraft, 
    * which is consistent with the altitude closed-loop data of flight control internal position control
    * TO DO:the data will be replaced by new data subscription.
    */
     if (!startGlobalPositionBroadcast())
-    {
         return false;
-    }
+
     sleep(1);
 
     //! get origin position and relative height(from home point)of aircraft.
@@ -455,17 +431,13 @@ bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &off
 
         if (vectorNorm(offsetRemaining) < posThresholdInM &&
             std::fabs(yawInRad / DEG2RAD - yawDesiredInDeg) < yawThresholdInDeg)
-        {
             //! 1. We are within bounds; start incrementing our in-bound counter
             withinBoundsCounter += cycleTimeInMs;
-        }
         else
         {
             if (withinBoundsCounter != 0)
-            {
                 //! 2. Start incrementing an out-of-bounds counter
                 outOfBounds += cycleTimeInMs;
-            }
         }
         //! 3. Reset withinBoundsCounter if necessary
         if (outOfBounds > outOfControlBoundsTimeLimit)
@@ -475,9 +447,8 @@ bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &off
         }
         //! 4. If within bounds, set flag and break
         if (withinBoundsCounter >= withinControlBoundsTimeReqmt)
-        {
             break;
-        }
+
         usleep(cycleTimeInMs * 1000);
         elapsedTimeInMs += cycleTimeInMs;
     }
@@ -492,12 +463,29 @@ bool DroneFlightControlTask::moveByPositionOffset(const Telemetry::Vector3f &off
 
     if (elapsedTimeInMs >= timeoutInMilSec)
     {
-        std::cout << "Task timeout!\n";
-        teardownSubscription(pkgIndex);
+        DERROR("Task timeout!");
         return false;
     }
-    teardownSubscription(pkgIndex);
     return true;
+}
+
+base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState()
+{
+    base::samples::RigidBodyState cmd;
+    cmd.time = base::Time::fromMilliseconds(mSetup.vehicle->broadcast->getTimeStamp().time_ms);
+    cmd.orientation.w() = mSetup.vehicle->broadcast->getQuaternion().q0;
+    cmd.orientation.x() = mSetup.vehicle->broadcast->getQuaternion().q1;
+    cmd.orientation.y() = mSetup.vehicle->broadcast->getQuaternion().q2;
+    cmd.orientation.z() = mSetup.vehicle->broadcast->getQuaternion().q3;
+    cmd.velocity.x() = mSetup.vehicle->broadcast->getVelocity().x;
+    cmd.velocity.y() = mSetup.vehicle->broadcast->getVelocity().y;
+    cmd.velocity.z() = mSetup.vehicle->broadcast->getVelocity().z;
+    cmd.angular_velocity.x() = mSetup.vehicle->broadcast->getAngularRate().x;
+    cmd.angular_velocity.y() = mSetup.vehicle->broadcast->getAngularRate().y;
+    cmd.angular_velocity.z() = mSetup.vehicle->broadcast->getAngularRate().z;
+    // cmd.position = mSetup.vehicle->broadcast->getRelativePosition();
+
+    return cmd;
 }
 
 void DroneFlightControlTask::startAsyncCmdCallBack(ErrorCode::ErrorCodeType retCode,
@@ -505,9 +493,7 @@ void DroneFlightControlTask::startAsyncCmdCallBack(ErrorCode::ErrorCodeType retC
 {
     DSTATUS("retCode : 0x%lX", retCode);
     if (retCode == ErrorCode::SysCommonErr::Success)
-    {
         DSTATUS("Pass : %s.", SampleLog);
-    }
     else
     {
         DERROR("Error : %s. Error code : %d", SampleLog, retCode);
@@ -534,9 +520,8 @@ bool DroneFlightControlTask::setUpSubscription(int pkgIndex, int freq,
         bool pkgStatus = mSetup.vehicle->subscribe->initPackageFromTopicList(
             pkgIndex, topicSize, topicList, enableTimestamp, freq);
         if (!(pkgStatus))
-        {
             return pkgStatus;
-        }
+
         usleep(5000);
         /*! Start listening to the telemetry data */
         subscribeStatus = mSetup.vehicle->subscribe->startPackage(pkgIndex, mFunctionTimeout);
@@ -548,9 +533,8 @@ bool DroneFlightControlTask::setUpSubscription(int pkgIndex, int freq,
             ACK::ErrorCode ack = mSetup.vehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
             if (ACK::getError(ack))
             {
-                DERROR(
-                    "Error unsubscription; please restart the drone/FC to get "
-                    "back to a clean state");
+                DERROR("Error unsubscription; please restart the drone/FC to get "
+                       "back to a clean state");
             }
             return false;
         }
@@ -787,7 +771,6 @@ ErrorCode::ErrorCodeType DroneFlightControlTask::runWaypointV2Mission()
 
     GetRemainRamAck actionMemory = {0};
     ErrorCode::ErrorCodeType ret;
-    int pkgIndex = 0;
 
     /*! upload mission */
     /*! upload mission's timeout need to be longer than 2s*/
@@ -845,12 +828,6 @@ ErrorCode::ErrorCodeType DroneFlightControlTask::runWaypointV2Mission()
     if (ret != ErrorCode::SysCommonErr::Success)
         return ret;
     sleep(50);
-    /*! Set up telemetry subscription*/
-    if (!teardownSubscription(pkgIndex))
-    {
-        std::cout << "Failed to tear down Subscription!" << std::endl;
-        return ErrorCode::SysCommonErr::UndefinedError;
-    }
 
     return ErrorCode::SysCommonErr::Success;
 }
@@ -890,9 +867,8 @@ ErrorCode::ErrorCodeType DroneFlightControlTask::initMissionSetting()
         return ret;
     }
     else
-    {
         DSTATUS("Init mission setting successfully!");
-    }
+
     return ret;
 }
 
@@ -970,18 +946,14 @@ void DroneFlightControlTask::obtainJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeT
                                                            UserData userData)
 {
     if (errorCode == ErrorCode::FlightControllerErr::SetControlParam::ObtainJoystickCtrlAuthoritySuccess)
-    {
         DSTATUS("ObtainJoystickCtrlAuthoritySuccess");
-    }
 }
 
 void DroneFlightControlTask::releaseJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
                                                             UserData userData)
 {
     if (errorCode == ErrorCode::FlightControllerErr::SetControlParam::ReleaseJoystickCtrlAuthoritySuccess)
-    {
         DSTATUS("ReleaseJoystickCtrlAuthoritySuccess");
-    }
 }
 
 ErrorCode::ErrorCodeType DroneFlightControlTask::uploadWaypointMission(int timeout)
@@ -995,9 +967,8 @@ ErrorCode::ErrorCodeType DroneFlightControlTask::uploadWaypointMission(int timeo
         return ret;
     }
     else
-    {
         DSTATUS("Upload waypoint v2 mission successfully!");
-    }
+
     return ret;
 }
 
@@ -1011,9 +982,8 @@ ErrorCode::ErrorCodeType DroneFlightControlTask::downloadWaypointMission(std::ve
         return ret;
     }
     else
-    {
         DSTATUS("Download waypoint v2 mission successfully!");
-    }
+
     return ret;
 }
 
@@ -1028,9 +998,8 @@ ErrorCode::ErrorCodeType DroneFlightControlTask::getActionRemainMemory(GetRemain
         return ret;
     }
     else
-    {
         DSTATUS("get waypoint v2 action remain memory successfully!");
-    }
+
     return ret;
 }
 
@@ -1045,9 +1014,8 @@ ErrorCode::ErrorCodeType DroneFlightControlTask::uploadWapointActions()
         return ret;
     }
     else
-    {
         DSTATUS("Upload waypoint v2 actions successfully!");
-    }
+
     return ret;
 }
 
@@ -1061,9 +1029,8 @@ ErrorCode::ErrorCodeType DroneFlightControlTask::startWaypointMission()
         return ret;
     }
     else
-    {
         DSTATUS("Start waypoint v2 mission successfully!");
-    }
+
     return ret;
 }
 
@@ -1083,9 +1050,8 @@ ErrorCode::ErrorCodeType DroneFlightControlTask::pauseWaypointMission()
         return ret;
     }
     else
-    {
         DSTATUS("Pause waypoint v2 mission successfully!");
-    }
+
     sleep(5);
     return ret;
 }
@@ -1101,9 +1067,8 @@ ErrorCode::ErrorCodeType DroneFlightControlTask::resumeWaypointMission()
         return ret;
     }
     else
-    {
         DSTATUS("Resume Waypoint v2 mission successfully!");
-    }
+
     return ret;
 }
 
@@ -1163,9 +1128,8 @@ DroneFlightControlTask::updateMissionState(T_CmdHandle *cmdHandle, const T_CmdIn
             }
         }
         else
-        {
             DERROR("cmdInfo is a null value");
-        }
+
         return OSDK_STAT_OK;
     }
     return OSDK_STAT_ERR_ALLOC;
@@ -1228,9 +1192,7 @@ DroneFlightControlTask::OsdkLinux_UartInit(const char *port,
     long unsigned int i = 0;
 
     if (!port)
-    {
         return OSDK_STAT_ERR_PARAM;
-    }
 
     obj->uartObject.fd = open(port, O_RDWR | O_NOCTTY);
     if (obj->uartObject.fd == -1)
@@ -1299,19 +1261,14 @@ DroneFlightControlTask::OsdkLinux_UartSendData(const T_HalObj *obj,
     uint32_t realLen;
 
     if ((obj == NULL) || (obj->uartObject.fd == -1))
-    {
         return OSDK_STAT_ERR;
-    }
+
 
     realLen = write(obj->uartObject.fd, pBuf, bufLen);
     if (realLen == bufLen)
-    {
         return OSDK_STAT_OK;
-    }
     else
-    {
         return OSDK_STAT_ERR;
-    }
 }
 E_OsdkStat
 DroneFlightControlTask::OsdkLinux_UartReadData(const T_HalObj *obj,
@@ -1319,9 +1276,8 @@ DroneFlightControlTask::OsdkLinux_UartReadData(const T_HalObj *obj,
                                                uint32_t *bufLen)
 {
     if ((obj == NULL) || (obj->uartObject.fd == -1))
-    {
         return OSDK_STAT_ERR;
-    }
+
     ssize_t readLen = read(obj->uartObject.fd, pBuf, 1024);
     if (readLen < 0)
     {
@@ -1330,9 +1286,7 @@ DroneFlightControlTask::OsdkLinux_UartReadData(const T_HalObj *obj,
         perror("OsdkLinux_UartReadData");
     }
     else
-    {
         *bufLen = readLen;
-    }
 
     return OSDK_STAT_OK;
 }
@@ -1340,9 +1294,8 @@ E_OsdkStat
 DroneFlightControlTask::OsdkLinux_UartClose(T_HalObj *obj)
 {
     if ((obj == NULL) || (obj->uartObject.fd == -1))
-    {
         return OSDK_STAT_ERR;
-    }
+
     close(obj->uartObject.fd);
 
     return OSDK_STAT_OK;
@@ -1357,9 +1310,8 @@ DroneFlightControlTask::OsdkLinux_TaskCreate(
     // *task = malloc(sizeof(pthread_t));
     result = pthread_create((pthread_t *)task, NULL, taskFunc, arg);
     if (result != 0)
-    {
         return OSDK_STAT_ERR;
-    }
+
     return OSDK_STAT_OK;
 }
 E_OsdkStat
@@ -1383,9 +1335,8 @@ DroneFlightControlTask::OsdkLinux_MutexCreate(T_OsdkMutexHandle *mutex)
     // *mutex = malloc(sizeof(pthread_mutex_t));
     result = pthread_mutex_init((pthread_mutex_t *)mutex, NULL);
     if (result != 0)
-    {
         return OSDK_STAT_ERR;
-    }
+
     return OSDK_STAT_OK;
 }
 E_OsdkStat
@@ -1394,9 +1345,8 @@ DroneFlightControlTask::OsdkLinux_MutexDestroy(T_OsdkMutexHandle mutex)
     int result;
     result = pthread_mutex_destroy((pthread_mutex_t *)mutex);
     if (result != 0)
-    {
         return OSDK_STAT_ERR;
-    }
+
     return OSDK_STAT_OK;
 }
 E_OsdkStat
@@ -1405,9 +1355,8 @@ DroneFlightControlTask::OsdkLinux_MutexLock(T_OsdkMutexHandle mutex)
     int result;
     result = pthread_mutex_lock((pthread_mutex_t *)mutex);
     if (result != 0)
-    {
         return OSDK_STAT_ERR;
-    }
+
     return OSDK_STAT_OK;
 }
 E_OsdkStat
@@ -1415,9 +1364,8 @@ DroneFlightControlTask::OsdkLinux_MutexUnlock(T_OsdkMutexHandle mutex)
 {
     int result = pthread_mutex_unlock((pthread_mutex_t *)mutex);
     if (result != 0)
-    {
         return OSDK_STAT_ERR;
-    }
+
     return OSDK_STAT_OK;
 }
 E_OsdkStat
@@ -1429,9 +1377,8 @@ DroneFlightControlTask::OsdkLinux_SemaphoreCreate(
     // *semaphore = malloc(sizeof(sem_t));
     result = sem_init((sem_t *)semaphore, 0, (unsigned int)initValue);
     if (result != 0)
-    {
         return OSDK_STAT_ERR;
-    }
+
     return OSDK_STAT_OK;
 }
 E_OsdkStat
@@ -1441,9 +1388,8 @@ DroneFlightControlTask::OsdkLinux_SemaphoreDestroy(
     int result;
     result = sem_destroy((sem_t *)semaphore);
     if (result != 0)
-    {
         return OSDK_STAT_ERR;
-    }
+
     return OSDK_STAT_OK;
 }
 E_OsdkStat
@@ -1453,9 +1399,8 @@ DroneFlightControlTask::OsdkLinux_SemaphoreWait(
     int result;
     result = sem_wait((sem_t *)semaphore);
     if (result != 0)
-    {
         return OSDK_STAT_ERR;
-    }
+
     return OSDK_STAT_OK;
 }
 E_OsdkStat
@@ -1477,9 +1422,8 @@ DroneFlightControlTask::OsdkLinux_SemaphoreTimedWait(
     semaphoreWaitTime.tv_nsec = systemTime.tv_usec * 1000;
     result = sem_timedwait((sem_t *)semaphore, &semaphoreWaitTime);
     if (result != 0)
-    {
         return OSDK_STAT_ERR;
-    }
+
     return OSDK_STAT_OK;
 }
 E_OsdkStat
@@ -1489,9 +1433,8 @@ DroneFlightControlTask::OsdkLinux_SemaphorePost(
     int result;
     result = sem_post((sem_t *)semaphore);
     if (result != 0)
-    {
         return OSDK_STAT_ERR;
-    }
+
     return OSDK_STAT_OK;
 }
 E_OsdkStat
