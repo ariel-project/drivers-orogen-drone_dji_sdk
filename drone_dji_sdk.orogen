@@ -3,8 +3,9 @@ name "drone_dji_sdk"
 using_library "dji_sdk"
 
 import_types_from "drone_dji_sdkTypes.hpp"
-import_types_from "std"
+import_types_from "power_base"
 import_types_from "base"
+import_types_from "std"
 
 task_context "DroneFlightControlTask" do
 
@@ -16,11 +17,11 @@ task_context "DroneFlightControlTask" do
     property "baudrate", "/uint32_t", 230_400
     property "acm_port", "/std/string", "/dev/ttyACM0"
 
-    input_port "cmd_input", "drone_dji_sdk/BUTTON_ACTION"
+    input_port "cmd_input", "drone_dji_sdk/COMMAND_ACTION"
     input_port "cmd_pos", "drone_dji_sdk/VehicleSetpoint"
 
     output_port "pose_samples", "/base/samples/RigidBodyState"
-    output_port "battery_percentage", "/int"
+    output_port "battery", "/power_base/BatteryStatus"
 
     runtime_states :DJI_STOPPED, :DJI_ON_GROUND, :DJI_IN_AIR
 

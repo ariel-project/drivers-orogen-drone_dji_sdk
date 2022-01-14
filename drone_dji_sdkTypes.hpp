@@ -12,16 +12,17 @@
 #include <base/Angle.hpp>
 namespace drone_dji_sdk
 {
-    enum BUTTON_ACTION
+    enum COMMAND_ACTION
     {
         TAKEOFF_ACTIVATE,
+        PRE_LANDING_ACTIVATE,
         LANDING_ACTIVATE,
-        CONTROL_ACTIVATE,
+        GO_TO_ACTIVATE,
         MISSION_ACTIVATE
     };
     struct VehicleSetpoint
     {
-        base::Vector3d setpoint;
+        base::Vector3d position;
         base::Angle heading;
     };
 }

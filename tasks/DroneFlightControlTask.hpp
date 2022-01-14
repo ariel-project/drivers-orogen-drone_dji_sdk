@@ -130,36 +130,16 @@ namespace drone_dji_sdk
         DJI::OSDK::FlightController* mFlightController;
         std::vector<DJIWaypointV2Action> mActions;
 
-        /** Monitored Takeoff
-         * This implementation of takeoff  with monitoring makes sure your aircraft
-         * actually took off and only returns when takeoff is complete.
-         * Use unless you want to do other stuff during takeoff - this will block
-         * the main thread.
-         */
-        bool monitoredTakeoff();
-
-        /** Monitored Landing (Blocking API call). 
-         * Return status as well as ack.
-         * This version of takeoff makes sure your aircraft landing
-         * and only returns when landing is complete.
-         */
-        bool monitoredLanding();
-
-        /** Position Control. Allows you to set an offset from your current
-         * location. The aircraft will move to that position and stay there.
-         * Typical use would be as a building block in an outer loop that does not
-         * require many fast changes, perhaps a few-waypoint trajectory. For smoother
-         * transition and response you should convert your trajectory to attitude
-         * setpoints and use attitude control or convert to velocity setpoints
-         * and use velocity control.
-         */
-        bool moveByPositionOffset(const Telemetry::Vector3f& offsetDesired,
-                                  float yawDesiredInDeg);
+        void land();
+        void preLand(VehicleSetpoint const &finalPoint);
+        void takeoff(VehicleSetpoint const &initialPoint);
+        void goTo(VehicleSetpoint const &setpoint,
+                  base::samples::RigidBodyState const &pose);
+        void mission();
 
         ErrorCode::ErrorCodeType initMissionSetting();
         ErrorCode::ErrorCodeType uploadWapointActions();
         ErrorCode::ErrorCodeType startWaypointMission();
-        ErrorCode::ErrorCodeType runWaypointV2Mission();
         ErrorCode::ErrorCodeType stopWaypointMission();
         ErrorCode::ErrorCodeType pauseWaypointMission();
         ErrorCode::ErrorCodeType resumeWaypointMission();
@@ -174,8 +154,10 @@ namespace drone_dji_sdk
         void setGlobalCruiseSpeed(const GlobalCruiseSpeed &cruiseSpeed);
 
         // Helper Functions
-
+        base::samples::RigidBodyState getRigidBodyState() const;
+        power_base::BatteryStatus getBatteryStatus() const;
         Telemetry::Vector3f quaternionToEulerAngle(const Telemetry::Quaternion& quat);
+        
         static void
         obtainJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
                                       UserData userData);
@@ -184,30 +166,12 @@ namespace drone_dji_sdk
                                        UserData userData);
         bool setUpSubscription(int pkgIndex, int freq,
                                Telemetry::TopicName topicList[], uint8_t topicSize);
-        bool startGlobalPositionBroadcast();
-        bool motorStartedCheck();
-        bool takeOffInAirCheck();
-        bool takeoffFinishedCheck();
-        bool landFinishedCheck(void);
-        bool checkActionStarted(uint8_t mode);
         bool teardownSubscription(const int pkgIndex);
-        Telemetry::Vector3f localOffsetFromGpsAndFusedHeightOffset(
-            const Telemetry::GPSFused &target, const Telemetry::GPSFused &origin,
-            const float32_t &targetHeight, const float32_t &originHeight);
-        Telemetry::Vector3f vector3FSub(const Telemetry::Vector3f &vectorA,
-                             const Telemetry::Vector3f &vectorB);
-        void horizCommandLimit(float speedFactor, float &commandX,
-                               float &commandY);
-        float32_t vectorNorm(Telemetry::Vector3f v);
-        template <typename Type>
-        static int signOfData(Type type);
 
         void setupController();
         void setupEnvironment();
         bool initVehicle();
         bool checkTelemetrySubscription();
-
-        base::samples::RigidBodyState getRigidBodyState();
 
         static void
         startAsyncCmdCallBack(ErrorCode::ErrorCodeType retCode,
