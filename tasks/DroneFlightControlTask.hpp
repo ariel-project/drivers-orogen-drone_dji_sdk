@@ -5,6 +5,8 @@
 
 #include "drone_dji_sdk/DroneFlightControlTaskBase.hpp"
 #include "drone_dji_sdkTypes.hpp"
+#include <gps_base/UTMConverter.hpp>
+#include <gps_base/BaseTypes.hpp>
 #include <dji_setup_helpers.hpp>
 #include "dji_telemetry.hpp"
 #include "dji_vehicle.hpp"
@@ -14,8 +16,6 @@
 #include "osdk_typedef.h"
 #include <pthread.h>
 #include <cmath>
-#include <fstream>
-#include <iostream>
 #include <semaphore.h>
 #include "stdint.h"
 #include <stdlib.h>

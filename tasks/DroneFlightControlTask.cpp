@@ -381,7 +381,18 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
     cmd.angular_velocity.x() = mSetup.vehicle->broadcast->getAngularRate().x;
     cmd.angular_velocity.y() = mSetup.vehicle->broadcast->getAngularRate().y;
     cmd.angular_velocity.z() = mSetup.vehicle->broadcast->getAngularRate().z;
-    // cmd.position = mSetup.vehicle->broadcast->getRelativePosition();
+    // Get GPS position information
+    Telemetry::GPSInfo gpsInfo = mSetup.vehicle->broadcast->getGPSInfo();
+    // Convert position data from GPS to NWU
+    gps_base::Solution solution;
+    solution.time = cmd.time;
+    solution.latitude = gpsInfo.latitude;
+    solution.longitude = gpsInfo.longitude;
+    solution.altitude = gpsInfo.HFSL;
+    // Get position
+    gps_base::UTMConverter gpsSolution;
+    base::samples::RigidBodyState gpsPosition = gpsSolution.convertToNWU(solution);
+    cmd.position = gpsPosition.position;
 
     return cmd;
 }

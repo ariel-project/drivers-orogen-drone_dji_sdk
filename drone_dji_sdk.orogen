@@ -1,6 +1,7 @@
 name "drone_dji_sdk"
 
 using_library "dji_sdk"
+using_library "gps_base"
 
 import_types_from "drone_dji_sdkTypes.hpp"
 import_types_from "power_base"
