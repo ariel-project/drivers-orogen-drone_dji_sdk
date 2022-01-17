@@ -26,5 +26,6 @@ task_context "DroneFlightControlTask" do
 
     runtime_states :DJI_STOPPED, :DJI_ON_GROUND, :DJI_IN_AIR
 
-    port_driven
+    # Deployed with a 10ms period by default
+    periodic 0.01
 end
