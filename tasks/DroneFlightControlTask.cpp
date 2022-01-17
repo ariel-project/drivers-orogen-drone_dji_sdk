@@ -469,7 +469,6 @@ bool DroneFlightControlTask::teardownSubscription(const int pkgIndex)
     return true;
 }
 
-
 void DroneFlightControlTask::mission()
 {
     if (!mSetup.vehicle->isM300())
@@ -486,14 +485,20 @@ void DroneFlightControlTask::mission()
     int uploadMissionTimeOut = 3;
     ret = uploadWaypointMission(uploadMissionTimeOut);
     if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("upload waypoint mission error");
         return;
+    }
     sleep(mFunctionTimeout);
 
     /*! download mission */
     std::vector<WaypointV2> mission;
     ret = downloadWaypointMission(mission);
     if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("download waypoint mission error");
         return;
+    }
     sleep(mFunctionTimeout);
 
     /*! upload  actions */
@@ -507,7 +512,10 @@ void DroneFlightControlTask::mission()
 
     ret = uploadWapointActions();
     if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("upload waypoint action error");
         return;
+    }
 
     ret = getActionRemainMemory(actionMemory);
     sleep(mFunctionTimeout);
@@ -515,7 +523,10 @@ void DroneFlightControlTask::mission()
     /*! start mission */
     ret = startWaypointMission();
     if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("start waypoint mission error");
         return;
+    }
     sleep(20);
 
     /*! set global cruise speed */
@@ -529,16 +540,20 @@ void DroneFlightControlTask::mission()
     /*! pause the mission*/
     ret = pauseWaypointMission();
     if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("pause waypoint mission error");
         return;
+    }
     sleep(5);
 
     /*! resume the mission*/
     ret = resumeWaypointMission();
     if (ret != ErrorCode::SysCommonErr::Success)
+    {
+        DERROR("resume waypoint mission error");
         return;
+    }
     sleep(50);
-
-    // return ErrorCode::SysCommonErr::Success;
 }
 
 ErrorCode::ErrorCodeType DroneFlightControlTask::initMissionSetting()
