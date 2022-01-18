@@ -10,6 +10,7 @@
 
 #include <base/Eigen.hpp>
 #include <base/Angle.hpp>
+#include <base/Time.hpp>
 namespace drone_dji_sdk
 {
     enum COMMAND_ACTION
@@ -22,6 +23,7 @@ namespace drone_dji_sdk
     };
     struct VehicleSetpoint
     {
+        base::Time time;
         base::Vector3d position;
         base::Angle heading;
     };
