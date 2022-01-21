@@ -2,7 +2,9 @@
 
 include(drone_dji_sdkTaskLib)
 ADD_LIBRARY(${DRONE_DJI_SDK_TASKLIB_NAME} SHARED
-    ${DRONE_DJI_SDK_TASKLIB_SOURCES})
+    ${DRONE_DJI_SDK_TASKLIB_SOURCES}
+    hal/osdkhal_linux.c
+    osal/osdkosal_linux.c)
 add_dependencies(${DRONE_DJI_SDK_TASKLIB_NAME}
     regen-typekit)
 

@@ -14,9 +14,9 @@ task_context "DroneFlightControlTask" do
 
     property "app_id", "/uint32_t", 0
     property "app_key", "/std/string", ""
-    property "device", "/std/string", "/dev/ttyUSB0"
+    property "device", "/std/string"
     property "baudrate", "/uint32_t", 230_400
-    property "acm_port", "/std/string", "/dev/ttyACM0"
+    property "acm_port", "/std/string"
 
     input_port "cmd_input", "drone_dji_sdk/COMMAND_ACTION"
     input_port "cmd_pos", "drone_dji_sdk/VehicleSetpoint"

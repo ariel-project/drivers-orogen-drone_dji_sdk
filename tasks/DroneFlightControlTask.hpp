@@ -190,54 +190,6 @@ namespace drone_dji_sdk
         static E_OsdkStat
         OsdkUser_Console(const uint8_t *data,
                          uint16_t dataLen);
-        static E_OsdkStat
-        OsdkLinux_UartInit(const char *port,
-                           const int baudrate,
-                           T_HalObj *obj);
-        static E_OsdkStat
-        OsdkLinux_UartSendData(const T_HalObj *obj,
-                               const uint8_t *pBuf,
-                               uint32_t bufLen);
-        static E_OsdkStat
-        OsdkLinux_UartReadData(const T_HalObj *obj,
-                               uint8_t *pBuf,
-                               uint32_t *bufLen);
-        static E_OsdkStat
-        OsdkLinux_UartClose(T_HalObj *obj);
-        static E_OsdkStat
-        OsdkLinux_TaskCreate(T_OsdkTaskHandle *task,
-                             void *(*taskFunc)(void *),
-                             uint32_t stackSize, void *arg);
-        static E_OsdkStat
-        OsdkLinux_TaskDestroy(T_OsdkTaskHandle task);
-        static E_OsdkStat
-        OsdkLinux_TaskSleepMs(uint32_t time_ms);
-        static E_OsdkStat
-        OsdkLinux_MutexCreate(T_OsdkMutexHandle *mutex);
-        static E_OsdkStat
-        OsdkLinux_MutexDestroy(T_OsdkMutexHandle mutex);
-        static E_OsdkStat
-        OsdkLinux_MutexLock(T_OsdkMutexHandle mutex);
-        static E_OsdkStat
-        OsdkLinux_MutexUnlock(T_OsdkMutexHandle mutex);
-        static E_OsdkStat
-        OsdkLinux_SemaphoreCreate(T_OsdkSemHandle *semaphore,
-                                  uint32_t initValue);
-        static E_OsdkStat
-        OsdkLinux_SemaphoreDestroy(T_OsdkSemHandle semaphore);
-        static E_OsdkStat
-        OsdkLinux_SemaphoreWait(T_OsdkSemHandle semaphore);
-        static E_OsdkStat
-        OsdkLinux_SemaphoreTimedWait(T_OsdkSemHandle semaphore,
-                                     uint32_t waitTime);
-        static E_OsdkStat
-        OsdkLinux_SemaphorePost(T_OsdkSemHandle semaphore);
-        static E_OsdkStat
-        OsdkLinux_GetTimeMs(uint32_t *ms);
-        static void*
-        OsdkLinux_Malloc(uint32_t size);
-        static void
-        OsdkLinux_Free(void *ptr);
     };
 }
 #endif
