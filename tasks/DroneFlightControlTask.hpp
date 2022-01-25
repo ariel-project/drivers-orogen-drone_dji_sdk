@@ -7,13 +7,9 @@
 #include "drone_dji_sdkTypes.hpp"
 #include <gps_base/UTMConverter.hpp>
 #include <gps_base/BaseTypes.hpp>
-#include <dji_setup_helpers.hpp>
-#include "dji_telemetry.hpp"
-#include "dji_vehicle.hpp"
-#include "dji_status.hpp"
-#include "dji_linker.hpp"
-#include "osdk_platform.h"
-#include "osdk_typedef.h"
+#include "djiosdk/dji_telemetry.hpp"
+#include "djiosdk/dji_vehicle.hpp"
+#include "djiosdk/dji_status.hpp"
 #include <pthread.h>
 #include <cmath>
 #include <semaphore.h>
@@ -123,73 +119,30 @@ namespace drone_dji_sdk
     private:
 
         uint32_t mFunctionTimeout;
-        int mControlFreqInHz;
         int mStatusFreqInHz;
         Vehicle::ActivateData mActivateData;
-        DJI::OSDK::Setup mSetup;
-        DJI::OSDK::FlightController* mFlightController;
-        std::vector<DJIWaypointV2Action> mActions;
+        DJI::OSDK::Vehicle* mVehicle;
 
         void land();
+        void mission();
         void preLand(VehicleSetpoint const &finalPoint);
         void takeoff(VehicleSetpoint const &initialPoint);
         void goTo(VehicleSetpoint const &setpoint,
                   base::samples::RigidBodyState const &pose);
-        void mission();
-
-        ErrorCode::ErrorCodeType initMissionSetting();
-        ErrorCode::ErrorCodeType uploadWapointActions();
-        ErrorCode::ErrorCodeType startWaypointMission();
-        ErrorCode::ErrorCodeType stopWaypointMission();
-        ErrorCode::ErrorCodeType pauseWaypointMission();
-        ErrorCode::ErrorCodeType resumeWaypointMission();
-        ErrorCode::ErrorCodeType uploadWaypointMission(int timeout);
-        ErrorCode::ErrorCodeType downloadWaypointMission(std::vector<WaypointV2> &mission);
-        ErrorCode::ErrorCodeType getActionRemainMemory(GetRemainRamAck &actionMemory);
-        std::vector<DJIWaypointV2Action> generateWaypointActions(uint16_t actionNum);
-        std::vector<WaypointV2> generatePolygonWaypoints(float32_t radius,
-                                                         uint16_t polygonNum);
-        void getGlobalCruiseSpeed();
-        void setWaypointV2Defaults(WaypointV2 &waypointV2);
-        void setGlobalCruiseSpeed(const GlobalCruiseSpeed &cruiseSpeed);
 
         // Helper Functions
         base::samples::RigidBodyState getRigidBodyState() const;
         power_base::BatteryStatus getBatteryStatus() const;
         Telemetry::Vector3f quaternionToEulerAngle(const Telemetry::Quaternion& quat);
         
-        static void
-        obtainJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
-                                      UserData userData);
-        static void
-        releaseJoystickCtrlAuthorityCB(ErrorCode::ErrorCodeType errorCode,
-                                       UserData userData);
+
         bool setUpSubscription(int pkgIndex, int freq,
                                Telemetry::TopicName topicList[], uint8_t topicSize);
         bool teardownSubscription(const int pkgIndex);
 
-        void setupController();
-        void setupEnvironment();
         bool initVehicle();
         bool checkTelemetrySubscription();
 
-        static void
-        startAsyncCmdCallBack(ErrorCode::ErrorCodeType retCode,
-                              UserData SampleLog);
-
-        static E_OsdkStat
-        updateMissionState(T_CmdHandle *cmdHandle,
-                           const T_CmdInfo *cmdInfo,
-                           const uint8_t *cmdData,
-                           void *userData);
-        static E_OsdkStat
-        updateMissionEvent(T_CmdHandle *cmdHandle,
-                           const T_CmdInfo *cmdInfo,
-                           const uint8_t *cmdData,
-                           void *userData);
-        static E_OsdkStat
-        OsdkUser_Console(const uint8_t *data,
-                         uint16_t dataLen);
     };
 }
 #endif

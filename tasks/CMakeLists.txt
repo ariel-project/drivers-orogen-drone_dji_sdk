@@ -2,9 +2,7 @@
 
 include(drone_dji_sdkTaskLib)
 ADD_LIBRARY(${DRONE_DJI_SDK_TASKLIB_NAME} SHARED
-    ${DRONE_DJI_SDK_TASKLIB_SOURCES}
-    hal/osdkhal_linux.c
-    osal/osdkosal_linux.c)
+    ${DRONE_DJI_SDK_TASKLIB_SOURCES})
 add_dependencies(${DRONE_DJI_SDK_TASKLIB_NAME}
     regen-typekit)
 
@@ -12,9 +10,7 @@ TARGET_LINK_LIBRARIES(${DRONE_DJI_SDK_TASKLIB_NAME}
     ${OrocosRTT_LIBRARIES}
     ${QT_LIBRARIES}
     ${DRONE_DJI_SDK_TASKLIB_DEPENDENT_LIBRARIES}
-    djiosdk-core
-    dji-linker
-    advanced-sensing)
+    djiosdk-core)
 
 SET_TARGET_PROPERTIES(${DRONE_DJI_SDK_TASKLIB_NAME}
     PROPERTIES LINK_INTERFACE_LIBRARIES "${DRONE_DJI_SDK_TASKLIB_INTERFACE_LIBRARIES}")
