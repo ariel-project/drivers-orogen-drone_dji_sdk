@@ -11,6 +11,7 @@
 #include <base/Eigen.hpp>
 #include <base/Angle.hpp>
 #include <base/Time.hpp>
+
 namespace drone_dji_sdk
 {
     enum COMMAND_ACTION
@@ -26,6 +27,29 @@ namespace drone_dji_sdk
         base::Time time;
         base::Vector3d position;
         base::Angle heading;
+    };
+
+    struct Waypoint
+    {
+        uint8_t index;       /*!< Index to be uploaded */
+        float latitude;  /*!< Latitude (radian) */
+        float longitude; /*!< Longitude (radian) */
+        float altitude;  /*!< Altitude (relative altitude from takeoff point) */
+        float damping;   /*!< Bend length (effective coordinated turn mode only) */
+        int16_t yaw;         /*!< Yaw (degree) */
+        int16_t gimbalPitch; /*!< Gimbal pitch */
+        uint8_t turnMode;    /*!< Turn mode <br> */
+        /*!< 0: clockwise <br>*/
+        /*!< 1: counter-clockwise <br>*/
+        uint8_t reserved[8]; /*!< Reserved */
+        uint8_t hasAction;   /*!< Action flag <br>*/
+        /*!< 0: no action <br>*/
+        /*!< 1: has action <br>*/
+        uint16_t actionTimeLimit; /*!< Action time limit */
+        uint8_t actionNumber; /*!< Total number of actions */
+        uint8_t actionRepeat; /*!< Total running times */
+        uint8_t commandList[16];  /*!< Command list */
+        uint16_t commandParameter[16];
     };
 }
 

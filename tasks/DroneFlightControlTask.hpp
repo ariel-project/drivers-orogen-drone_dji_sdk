@@ -122,6 +122,27 @@ namespace drone_dji_sdk
         int mStatusFreqInHz;
         Vehicle::ActivateData mActivateData;
         DJI::OSDK::Vehicle* mVehicle;
+        //waypoint settings
+        uint8_t mNumWaypoints;
+        float32_t mMaxVelocity;
+        float32_t mIdleVelocity;
+        float32_t mFinishAction;
+        float32_t mExecutiveTimes;
+        float32_t mYawMode;
+        float32_t mTraceMode;
+        float32_t mRCLostAction;
+        float32_t mGimbalPitch;
+        float32_t mLatitude;
+        float32_t mLongitude;
+        float32_t mAltitude;
+
+        bool initVehicle();
+        bool missionInitSettings();
+        bool checkTelemetrySubscription();
+        bool setUpSubscription(int pkgIndex, int freq,
+                               Telemetry::TopicName topicList[],
+                               uint8_t topicSize);
+        bool teardownSubscription(const int pkgIndex);
 
         void land();
         void mission();
@@ -133,15 +154,8 @@ namespace drone_dji_sdk
         // Helper Functions
         base::samples::RigidBodyState getRigidBodyState() const;
         power_base::BatteryStatus getBatteryStatus() const;
-        Telemetry::Vector3f quaternionToEulerAngle(const Telemetry::Quaternion& quat);
-        
-
-        bool setUpSubscription(int pkgIndex, int freq,
-                               Telemetry::TopicName topicList[], uint8_t topicSize);
-        bool teardownSubscription(const int pkgIndex);
-
-        bool initVehicle();
-        bool checkTelemetrySubscription();
+        void setWaypointInitDefaults(WayPointInitSettings *fdata);
+        WayPointSettings getWaypointSettings(Waypoint cmd_waypoint);
 
     };
 }

@@ -1,8 +1,6 @@
 /* Generated from orogen/lib/orogen/templates/tasks/Task.cpp */
 
 #include "DroneFlightControlTask.hpp"
-// #include "hal/osdkhal_linux.h"
-// #include "osal/osdkosal_linux.h"
 
 using namespace DJI::OSDK;
 using namespace drone_dji_sdk;
@@ -27,12 +25,27 @@ bool DroneFlightControlTask::configureHook()
         return false;
 
     // Init class members
-    mFunctionTimeout = 1;  // second
-    mStatusFreqInHz = 10;  // Hz
+    mFunctionTimeout = 1; // second
+    mStatusFreqInHz = 10; // Hz
+    // waypoint init settings
+    mNumWaypoints = 1;
+    mMaxVelocity = 10;
+    mIdleVelocity = 5;
+    mFinishAction = 0;
+    mExecutiveTimes = 1;
+    mYawMode = 0;
+    mTraceMode = 0;
+    mRCLostAction = 1;
+    mGimbalPitch = 0;
+    mLatitude = 0;
+    mLongitude = 0;
+    mAltitude = 0;
 
     if (!initVehicle())
         return false;
     if (!checkTelemetrySubscription())
+        return false;
+    if (!missionInitSettings())
         return false;
 
     return true;
@@ -74,7 +87,7 @@ void DroneFlightControlTask::updateHook()
     if (_cmd_input.read(cmd_input) != RTT::NoData)
         return;
 
-    // setpoint inputs
+    // setpoint input
     VehicleSetpoint cmd_pos;
     if (_cmd_pos.read(cmd_pos) != RTT::NewData)
         return;
@@ -89,14 +102,17 @@ void DroneFlightControlTask::updateHook()
     {
     case TAKEOFF_ACTIVATE:
         return takeoff(cmd_pos);
-    case PRE_LANDING_ACTIVATE:
-        return preLand(cmd_pos);
-    case LANDING_ACTIVATE:
-        return land();
-    case GO_TO_ACTIVATE:
-        return goTo(cmd_pos, getRigidBodyState());
-    case MISSION_ACTIVATE:
-        return mission();
+        if (djiStatusFlight == VehicleStatus::FlightStatus::IN_AIR)
+        {
+            case PRE_LANDING_ACTIVATE:
+                return preLand(cmd_pos);
+            case LANDING_ACTIVATE:
+                return land();
+            case GO_TO_ACTIVATE:
+                return goTo(cmd_pos, getRigidBodyState());
+            case MISSION_ACTIVATE:
+                return mission();
+        }
     }
 
     DroneFlightControlTaskBase::updateHook();
@@ -133,10 +149,10 @@ bool DroneFlightControlTask::initVehicle()
     // Check if the communication is working fine
     if (!mVehicle->protocolLayer->getDriver()->getDeviceStatus())
     {
-      std::cout << "Comms appear to be incorrectly set up. Exiting." << std::endl;
-      delete (mVehicle);
-      this->mVehicle = nullptr;
-      return false;
+        std::cout << "Comms appear to be incorrectly set up. Exiting." << std::endl;
+        delete (mVehicle);
+        this->mVehicle = nullptr;
+        return false;
     }
 
     // Activate
@@ -145,14 +161,14 @@ bool DroneFlightControlTask::initVehicle()
     mActivateData.encKey = app_key;
     strcpy(mActivateData.encKey, _app_key.get().c_str());
     mActivateData.version = mVehicle->getFwVersion();
-    ACK::ErrorCode ack   = mVehicle->activate(&mActivateData, mFunctionTimeout);
+    ACK::ErrorCode ack = mVehicle->activate(&mActivateData, mFunctionTimeout);
 
     if (ACK::getError(ack))
     {
-      ACK::getErrorCodeMessage(ack, __func__);
-      delete (mVehicle);
-      this->mVehicle = nullptr;
-      return false;
+        ACK::getErrorCodeMessage(ack, __func__);
+        delete (mVehicle);
+        this->mVehicle = nullptr;
+        return false;
     }
 
     return true;
@@ -171,6 +187,24 @@ bool DroneFlightControlTask::checkTelemetrySubscription()
 
     /*! wait for subscription data come*/
     sleep(mFunctionTimeout);
+    return true;
+}
+
+bool DroneFlightControlTask::missionInitSettings()
+{
+    // Waypoint Mission : Initialization
+    WayPointInitSettings fdata;
+    setWaypointInitDefaults(&fdata);
+
+    ACK::ErrorCode initAck = mVehicle->missionManager->init(
+        DJI_MISSION_TYPE::WAYPOINT, mFunctionTimeout, &fdata);
+    if (ACK::getError(initAck))
+    {
+        ACK::getErrorCodeMessage(initAck, __func__);
+        return false;
+    }
+
+    mVehicle->missionManager->printInfo();
     return true;
 }
 
@@ -196,7 +230,6 @@ void DroneFlightControlTask::takeoff(VehicleSetpoint const &initialPoint)
 
 void DroneFlightControlTask::preLand(VehicleSetpoint const &finalPoint)
 {
-    auto djiStatusFlight = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
     auto djiDisplayMode = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>();
 
     if (djiDisplayMode == DisplayMode::MODE_AUTO_LANDING ||
@@ -205,15 +238,11 @@ void DroneFlightControlTask::preLand(VehicleSetpoint const &finalPoint)
         return;
     }
 
-    if (djiStatusFlight == VehicleStatus::FlightStatus::IN_AIR)
-    {
-        goTo(finalPoint, getRigidBodyState());
-    }
+    goTo(finalPoint, getRigidBodyState());
 }
 
 void DroneFlightControlTask::land()
 {
-    auto djiStatusFlight = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
     auto djiDisplayMode = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>();
 
     if (djiDisplayMode == DisplayMode::MODE_AUTO_LANDING ||
@@ -222,10 +251,7 @@ void DroneFlightControlTask::land()
         return;
     }
 
-    if (djiStatusFlight == VehicleStatus::FlightStatus::IN_AIR)
-    {
-        mVehicle->control->land(mFunctionTimeout);
-    }
+    mVehicle->control->land(mFunctionTimeout);
 }
 
 void DroneFlightControlTask::goTo(VehicleSetpoint const &setpoint,
@@ -235,7 +261,7 @@ void DroneFlightControlTask::goTo(VehicleSetpoint const &setpoint,
     base::Vector3d offset = (setpoint.position - pose.position);
     // get the orientation between aircraft and target - in Deg!
     float yawInRad = base::getYaw(pose.orientation);
-    float yawDesiredInDeg = (setpoint.heading.rad - yawInRad)*180/M_PI;
+    float yawDesiredInDeg = (setpoint.heading.rad - yawInRad) * 180 / M_PI;
 
     float32_t xCmd = static_cast<float>(offset[0]);
     float32_t yCmd = static_cast<float>(offset[1]);
@@ -246,7 +272,70 @@ void DroneFlightControlTask::goTo(VehicleSetpoint const &setpoint,
 
 void DroneFlightControlTask::mission()
 {
+    // waypoint input
+    Waypoint cmd_waypoint;
+    if (_cmd_waypoint.read(cmd_waypoint) != RTT::NewData)
+        return;
 
+    WayPointSettings wpp = getWaypointSettings(cmd_waypoint);
+
+    ACK::WayPointIndex wpDataACK =
+        mVehicle->missionManager->wpMission->uploadIndexData(&wpp,
+                                                             mFunctionTimeout);
+    ACK::getErrorCodeMessage(wpDataACK.ack, __func__);
+
+    // Waypoint Mission: Start
+    ACK::ErrorCode startAck =
+        mVehicle->missionManager->wpMission->start(mFunctionTimeout);
+    if (ACK::getError(startAck))
+    {
+        ACK::getErrorCodeMessage(startAck, __func__);
+    }
+    else
+    {
+        DSTATUS("Starting Waypoint Mission..");
+    }
+}
+
+void DroneFlightControlTask::setWaypointInitDefaults(WayPointInitSettings *fdata)
+{
+    fdata->indexNumber = mNumWaypoints;
+    fdata->maxVelocity = mMaxVelocity;
+    fdata->idleVelocity = mIdleVelocity;
+    fdata->finishAction = mFinishAction;
+    fdata->executiveTimes = mExecutiveTimes;
+    fdata->yawMode = mYawMode;
+    fdata->traceMode = mTraceMode;
+    fdata->RCLostAction = mRCLostAction;
+    fdata->gimbalPitch = mGimbalPitch;
+    fdata->latitude = mLatitude;
+    fdata->longitude = mLongitude;
+    fdata->altitude = mAltitude;
+}
+
+WayPointSettings DroneFlightControlTask::getWaypointSettings(Waypoint cmd_waypoint)
+{
+    WayPointSettings wp;
+    wp.index = cmd_waypoint.index;
+    wp.latitude = cmd_waypoint.latitude;
+    wp.longitude = cmd_waypoint.longitude;
+    wp.altitude = cmd_waypoint.altitude;
+    wp.damping = cmd_waypoint.damping;
+    wp.yaw = cmd_waypoint.yaw;
+    wp.gimbalPitch = cmd_waypoint.gimbalPitch;
+    wp.turnMode = cmd_waypoint.turnMode;
+    for(int i=0;i<8;i++)
+        wp.reserved[i] = cmd_waypoint.reserved[i];
+    wp.hasAction = cmd_waypoint.hasAction;
+    wp.actionTimeLimit = cmd_waypoint.actionTimeLimit;
+    wp.actionNumber = cmd_waypoint.actionNumber;
+    wp.actionRepeat = cmd_waypoint.actionRepeat;
+    for(int i=0;i<16;i++)
+    {
+        wp.commandList[i] = cmd_waypoint.commandList[i];
+        wp.commandParameter[i] = cmd_waypoint.commandParameter[i];
+    }
+    return wp;
 }
 
 power_base::BatteryStatus DroneFlightControlTask::getBatteryStatus() const
