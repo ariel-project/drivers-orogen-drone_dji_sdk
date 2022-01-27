@@ -10,20 +10,6 @@
 #include "djiosdk/dji_telemetry.hpp"
 #include "djiosdk/dji_vehicle.hpp"
 #include "djiosdk/dji_status.hpp"
-#include <pthread.h>
-#include <cmath>
-#include <semaphore.h>
-#include "stdint.h"
-#include <stdlib.h>
-#include <stdexcept>
-#include <sys/time.h>
-#include <fcntl.h>
-#include <termios.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
 namespace drone_dji_sdk
 {
@@ -121,27 +107,15 @@ namespace drone_dji_sdk
         uint32_t mFunctionTimeout;
         int mStatusFreqInHz;
         Vehicle::ActivateData mActivateData;
-        DJI::OSDK::Vehicle* mVehicle;
-        //waypoint settings
-        uint8_t mNumWaypoints;
-        float32_t mMaxVelocity;
-        float32_t mIdleVelocity;
-        float32_t mFinishAction;
-        float32_t mExecutiveTimes;
-        float32_t mYawMode;
-        float32_t mTraceMode;
-        float32_t mRCLostAction;
-        float32_t mGimbalPitch;
-        float32_t mLatitude;
-        float32_t mLongitude;
-        float32_t mAltitude;
+        std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;
+        //mission settings
+        Mission mMission;
 
         bool initVehicle();
         bool missionInitSettings();
         bool checkTelemetrySubscription();
         bool setUpSubscription(int pkgIndex, int freq,
-                               Telemetry::TopicName topicList[],
-                               uint8_t topicSize);
+                               std::vector<Telemetry::TopicName> topicList);
         bool teardownSubscription(const int pkgIndex);
 
         void land();
@@ -154,8 +128,8 @@ namespace drone_dji_sdk
         // Helper Functions
         base::samples::RigidBodyState getRigidBodyState() const;
         power_base::BatteryStatus getBatteryStatus() const;
-        void setWaypointInitDefaults(WayPointInitSettings *fdata);
-        WayPointSettings getWaypointSettings(Waypoint cmd_waypoint);
+        WayPointInitSettings* getWaypointInitDefaults();
+        WayPointSettings getWaypointSettings(Waypoint cmd_waypoint, int index);
 
     };
 }
