@@ -107,6 +107,7 @@ namespace drone_dji_sdk
         uint32_t mFunctionTimeout;
         int mStatusFreqInHz;
         Vehicle::ActivateData mActivateData;
+        gps_base::UTMConverter mGPSSolution;
         std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;
         //mission settings
         Mission mMission;

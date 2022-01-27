@@ -9,5 +9,6 @@
   <depend package="base/logging" />
   <depend package="drivers/dji_sdk" />
   <depend package="drivers/gps_base" />
+  <depend package="drivers/orogen/gps_base" />
   <depend package="drivers/orogen/power_base" />
 </package>

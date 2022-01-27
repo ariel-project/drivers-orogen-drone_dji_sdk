@@ -40,6 +40,9 @@ bool DroneFlightControlTask::configureHook()
     mMission.rc_lost_action = RcLostAction::CONTINUE_WAYPOINT;
     mMission.gimbal_pitch = GimbalPitch::FREE_MODE;
 
+    // Configure GPS stuffs
+    mGPSSolution.setParameters(_gps_property.get());
+
     if (!initVehicle())
         return false;
     if (!checkTelemetrySubscription())
@@ -377,8 +380,7 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
     solution.longitude = gpsInfo.longitude;
     solution.altitude = gpsInfo.HFSL;
     // Get position
-    gps_base::UTMConverter gpsSolution;
-    base::samples::RigidBodyState gpsPosition = gpsSolution.convertToNWU(solution);
+    base::samples::RigidBodyState gpsPosition = mGPSSolution.convertToNWU(solution);
     cmd.position = gpsPosition.position;
 
     return cmd;
