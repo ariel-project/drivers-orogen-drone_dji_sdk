@@ -27,18 +27,6 @@ bool DroneFlightControlTask::configureHook()
     // Init class members
     mFunctionTimeout = 1; // second
     mStatusFreqInHz = 10; // Hz
-    // waypoint init settings
-    mMission.max_velocity = 10;
-    mMission.idle_velocity = 5;
-    mMission.latitude.rad = 0;
-    mMission.longitude.rad = 0;
-    mMission.altitude = 0;
-    mMission.finish_action = FinishAction::NO_FINISH_ACTION;
-    mMission.executive_times = ExecTimes::ONCE;
-    mMission.yaw_mode = YawMode::YAW_AUTO_MODE;
-    mMission.trace_mode = TraceMode::POINT_TO_POINT;
-    mMission.rc_lost_action = RcLostAction::CONTINUE_WAYPOINT;
-    mMission.gimbal_pitch = GimbalPitch::FREE_MODE;
 
     // Configure GPS stuffs
     mGPSSolution.setParameters(_gps_property.get());
@@ -272,13 +260,12 @@ void DroneFlightControlTask::goTo(VehicleSetpoint const &setpoint,
 void DroneFlightControlTask::mission()
 {
     // waypoint input
-    std::vector<Waypoint> cmd_waypoint;
-    if (_cmd_waypoint.read(cmd_waypoint) != RTT::NewData)
+    if (_cmd_mission.read(mMission) != RTT::NewData)
         return;
 
-    for (unsigned int i = 0; i < cmd_waypoint.size(); i++)
+    for (unsigned int i = 0; i < mMission.waypoints.size(); i++)
     {
-        WayPointSettings wpp = getWaypointSettings(cmd_waypoint[i], i);
+        WayPointSettings wpp = getWaypointSettings(mMission.waypoints[i], i);
         ACK::WayPointIndex wpDataACK =
             mVehicle->missionManager->wpMission->uploadIndexData(&wpp,
                                                                  mFunctionTimeout);

@@ -20,7 +20,7 @@ task_context "DroneFlightControlTask" do
 
     input_port "cmd_input", "drone_dji_sdk/CommandAction"
     input_port "cmd_pos", "drone_dji_sdk/VehicleSetpoint"
-    input_port "cmd_waypoint", "/std/vector</drone_dji_sdk/Waypoint>"
+    input_port "cmd_mission", "/drone_dji_sdk/Mission"
 
     output_port "pose_samples", "/base/samples/RigidBodyState"
     output_port "battery", "/power_base/BatteryStatus"
