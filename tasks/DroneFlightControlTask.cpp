@@ -35,8 +35,6 @@ bool DroneFlightControlTask::configureHook()
         return false;
     if (!checkTelemetrySubscription())
         return false;
-    if (!missionInitSettings())
-        return false;
 
     return true;
 }
@@ -72,37 +70,31 @@ void DroneFlightControlTask::updateHook()
     _pose_samples.write(getRigidBodyState());
     _battery.write(getBatteryStatus());
 
-    // cmd input
-    CommandAction cmd_input;
-    if (_cmd_input.read(cmd_input) == RTT::NoData)
-        return;
-
-    // setpoint input
-    VehicleSetpoint cmd_pos;
-    if (_cmd_pos.read(cmd_pos) != RTT::NewData)
-        return;
-
-    // Check status
+        // Check status
     auto djiStatusFlight = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
     DroneFlightControlTask::States status = djiStatusFlightToTaskState(djiStatusFlight);
     if (state() != status)
         state(status);
 
-    if (djiStatusFlight != VehicleStatus::FlightStatus::IN_AIR && cmd_input != TAKEOFF_ACTIVATE)
+    // cmd input
+    if (_cmd_input.read(mCmdInput) == RTT::NoData)
+        return;
+
+    if (djiStatusFlight != VehicleStatus::FlightStatus::IN_AIR && mCmdInput != TAKEOFF_ACTIVATE)
     {
         return;
     }
 
-    switch (cmd_input)
+    switch (mCmdInput)
     {
     case TAKEOFF_ACTIVATE:
-        return takeoff(cmd_pos);
+        return takeoff();
     case PRE_LANDING_ACTIVATE:
-        return preLand(cmd_pos);
+        return preLand();
     case LANDING_ACTIVATE:
         return land();
     case GO_TO_ACTIVATE:
-        return goTo(cmd_pos, getRigidBodyState());
+        return goTo();
     case MISSION_ACTIVATE:
         return mission();
     }
@@ -181,10 +173,10 @@ bool DroneFlightControlTask::checkTelemetrySubscription()
 bool DroneFlightControlTask::missionInitSettings()
 {
     // Waypoint Mission : Initialization
-    WayPointInitSettings *fdata = getWaypointInitDefaults();
+    WayPointInitSettings fdata = getWaypointInitDefaults();
 
     ACK::ErrorCode initAck = mVehicle->missionManager->init(
-        DJI_MISSION_TYPE::WAYPOINT, mFunctionTimeout, fdata);
+        DJI_MISSION_TYPE::WAYPOINT, mFunctionTimeout, &fdata);
     if (ACK::getError(initAck))
     {
         ACK::getErrorCodeMessage(initAck, __func__);
@@ -195,8 +187,12 @@ bool DroneFlightControlTask::missionInitSettings()
     return true;
 }
 
-void DroneFlightControlTask::takeoff(VehicleSetpoint const &initialPoint)
+void DroneFlightControlTask::takeoff()
 {
+    // setpoint input
+    if (_cmd_pos.read(mCmdPos) != RTT::NewData)
+        return;
+
     auto djiStatusFlight = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
     auto djiDisplayMode = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>();
 
@@ -208,15 +204,19 @@ void DroneFlightControlTask::takeoff(VehicleSetpoint const &initialPoint)
 
     if (djiStatusFlight == VehicleStatus::FlightStatus::IN_AIR)
     {
-        goTo(initialPoint, getRigidBodyState());
+        goTo();
         return;
     }
 
     mVehicle->control->takeoff(mFunctionTimeout);
 }
 
-void DroneFlightControlTask::preLand(VehicleSetpoint const &finalPoint)
+void DroneFlightControlTask::preLand()
 {
+    // setpoint input
+    if (_cmd_pos.read(mCmdPos) != RTT::NewData)
+        return;
+
     auto djiDisplayMode = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>();
 
     if (djiDisplayMode == DisplayMode::MODE_AUTO_LANDING ||
@@ -225,7 +225,7 @@ void DroneFlightControlTask::preLand(VehicleSetpoint const &finalPoint)
         return;
     }
 
-    goTo(finalPoint, getRigidBodyState());
+    goTo();
 }
 
 void DroneFlightControlTask::land()
@@ -241,18 +241,25 @@ void DroneFlightControlTask::land()
     mVehicle->control->land(mFunctionTimeout);
 }
 
-void DroneFlightControlTask::goTo(VehicleSetpoint const &setpoint,
-                                  base::samples::RigidBodyState const &pose)
+void DroneFlightControlTask::goTo()
 {
+    if(mCmdInput == GO_TO_ACTIVATE)
+    {
+        // setpoint input
+        if (_cmd_pos.read(mCmdPos) != RTT::NewData)
+            return;
+    }
+
     // get the vector between aircraft and target point.
-    base::Vector3d offset = (setpoint.position - pose.position);
+    base::Vector3d offset = (mCmdPos.position - getRigidBodyState().position);
     // get the orientation between aircraft and target - in Deg!
-    float yawInRad = base::getYaw(pose.orientation);
-    float yawDesiredInDeg = (setpoint.heading.rad - yawInRad) * 180 / M_PI;
+    float yawInRad = base::getYaw(getRigidBodyState().orientation);
+    float yawDesiredInDeg = (mCmdPos.heading.rad - yawInRad) * 180 / M_PI;
 
     float32_t xCmd = static_cast<float>(offset[0]);
     float32_t yCmd = static_cast<float>(offset[1]);
-    float32_t zCmd = static_cast<float>(setpoint.position[2]) + static_cast<float>(pose.position[2]);
+    float32_t zCmd = static_cast<float>(mCmdPos.position[2]) +
+                                        static_cast<float>(getRigidBodyState().position[2]);
 
     mVehicle->control->positionAndYawCtrl(xCmd, yCmd, zCmd, yawDesiredInDeg);
 }
@@ -261,6 +268,10 @@ void DroneFlightControlTask::mission()
 {
     // waypoint input
     if (_cmd_mission.read(mMission) != RTT::NewData)
+        return;
+
+    // Config mission
+    if (!missionInitSettings())
         return;
 
     for (unsigned int i = 0; i < mMission.waypoints.size(); i++)
@@ -285,21 +296,21 @@ void DroneFlightControlTask::mission()
     }
 }
 
-WayPointInitSettings* DroneFlightControlTask::getWaypointInitDefaults()
+WayPointInitSettings DroneFlightControlTask::getWaypointInitDefaults()
 {
-    WayPointInitSettings* fdata;
-    fdata->indexNumber = 0;
-    fdata->maxVelocity = mMission.max_velocity;
-    fdata->idleVelocity = mMission.idle_velocity;
-    fdata->finishAction = mMission.finish_action;
-    fdata->executiveTimes = mMission.executive_times;
-    fdata->yawMode = mMission.yaw_mode;
-    fdata->traceMode = mMission.trace_mode;
-    fdata->RCLostAction = mMission.rc_lost_action;
-    fdata->gimbalPitch = mMission.gimbal_pitch;
-    fdata->latitude = mMission.latitude.rad;
-    fdata->longitude = mMission.longitude.rad;
-    fdata->altitude = mMission.altitude;
+    WayPointInitSettings fdata;
+    fdata.indexNumber = 2;
+    fdata.maxVelocity = mMission.max_velocity;
+    fdata.idleVelocity = mMission.idle_velocity;
+    fdata.finishAction = mMission.finish_action;
+    fdata.executiveTimes = mMission.executive_times;
+    fdata.yawMode = mMission.yaw_mode;
+    fdata.traceMode = mMission.trace_mode;
+    fdata.RCLostAction = mMission.rc_lost_action;
+    fdata.gimbalPitch = mMission.gimbal_pitch;
+    fdata.latitude = mMission.latitude.rad;
+    fdata.longitude = mMission.longitude.rad;
+    fdata.altitude = mMission.altitude;
 
     return fdata;
 }

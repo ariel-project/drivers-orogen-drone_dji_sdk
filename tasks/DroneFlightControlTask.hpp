@@ -111,6 +111,8 @@ namespace drone_dji_sdk
         std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;
         //mission settings
         Mission mMission;
+        CommandAction mCmdInput;
+        VehicleSetpoint mCmdPos;
 
         bool initVehicle();
         bool missionInitSettings();
@@ -119,17 +121,16 @@ namespace drone_dji_sdk
                                std::vector<Telemetry::TopicName> topicList);
         bool teardownSubscription(const int pkgIndex);
 
+        void goTo();
         void land();
+        void preLand();
+        void takeoff();
         void mission();
-        void preLand(VehicleSetpoint const &finalPoint);
-        void takeoff(VehicleSetpoint const &initialPoint);
-        void goTo(VehicleSetpoint const &setpoint,
-                  base::samples::RigidBodyState const &pose);
 
         // Helper Functions
         base::samples::RigidBodyState getRigidBodyState() const;
         power_base::BatteryStatus getBatteryStatus() const;
-        WayPointInitSettings* getWaypointInitDefaults();
+        WayPointInitSettings getWaypointInitDefaults();
         WayPointSettings getWaypointSettings(Waypoint cmd_waypoint, int index);
 
     };
