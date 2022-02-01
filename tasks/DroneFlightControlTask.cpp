@@ -29,7 +29,7 @@ bool DroneFlightControlTask::configureHook()
     mStatusFreqInHz = 10; // Hz
 
     // Configure GPS stuffs
-    mGPSSolution.setParameters(_gps_property.get());
+    mGPSSolution.setParameters(_utm_parameters.get());
 
     if (!initVehicle())
         return false;
@@ -370,16 +370,17 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
     cmd.angular_velocity.y() = mVehicle->broadcast->getAngularRate().y;
     cmd.angular_velocity.z() = mVehicle->broadcast->getAngularRate().z;
     // Get GPS position information
-    Telemetry::GPSInfo gpsInfo = mVehicle->broadcast->getGPSInfo();
-    // Convert position data from GPS to NWU
+    Telemetry::GlobalPosition gpsInfo = mVehicle->broadcast->getGlobalPosition();
     gps_base::Solution solution;
     solution.time = cmd.time;
-    solution.latitude = gpsInfo.latitude;
-    solution.longitude = gpsInfo.longitude;
-    solution.altitude = gpsInfo.HFSL;
-    // Get position
+    solution.latitude = gpsInfo.latitude * 180 / M_PI;
+    solution.longitude = gpsInfo.longitude * 180 / M_PI;
+    solution.altitude = gpsInfo.altitude / 1000;
+    // Convert position data from GPS to NWU
     base::samples::RigidBodyState gpsPosition = mGPSSolution.convertToNWU(solution);
+    // Convert to NEU
     cmd.position = gpsPosition.position;
+    cmd.position[1] = -gpsPosition.position[1];
 
     return cmd;
 }
