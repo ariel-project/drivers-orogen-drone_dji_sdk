@@ -109,13 +109,11 @@ namespace drone_dji_sdk
         Vehicle::ActivateData mActivateData;
         gps_base::UTMConverter mGPSSolution;
         std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;
-        //mission settings
-        Mission mMission;
         CommandAction mCmdInput;
         VehicleSetpoint mCmdPos;
 
         bool initVehicle();
-        bool missionInitSettings();
+        bool missionInitSettings(Mission mission);
         bool checkTelemetrySubscription();
         bool setUpSubscription(int pkgIndex, int freq,
                                std::vector<Telemetry::TopicName> topicList);
@@ -130,7 +128,7 @@ namespace drone_dji_sdk
         // Helper Functions
         base::samples::RigidBodyState getRigidBodyState() const;
         power_base::BatteryStatus getBatteryStatus() const;
-        WayPointInitSettings getWaypointInitDefaults();
+        WayPointInitSettings getWaypointInitDefaults(Mission mission);
         WayPointSettings getWaypointSettings(Waypoint cmd_waypoint, int index);
 
     };

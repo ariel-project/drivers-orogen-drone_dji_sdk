@@ -170,10 +170,10 @@ bool DroneFlightControlTask::checkTelemetrySubscription()
     return true;
 }
 
-bool DroneFlightControlTask::missionInitSettings()
+bool DroneFlightControlTask::missionInitSettings(Mission mission)
 {
     // Waypoint Mission : Initialization
-    WayPointInitSettings fdata = getWaypointInitDefaults();
+    WayPointInitSettings fdata = getWaypointInitDefaults(mission);
 
     ACK::ErrorCode initAck = mVehicle->missionManager->init(
         DJI_MISSION_TYPE::WAYPOINT, mFunctionTimeout, &fdata);
@@ -267,16 +267,17 @@ void DroneFlightControlTask::goTo()
 void DroneFlightControlTask::mission()
 {
     // waypoint input
-    if (_cmd_mission.read(mMission) != RTT::NewData)
+    Mission mission;
+    if (_cmd_mission.read(mission) != RTT::NewData)
         return;
 
     // Config mission
-    if (!missionInitSettings())
+    if (!missionInitSettings(mission))
         return;
 
-    for (unsigned int i = 0; i < mMission.waypoints.size(); i++)
+    for (unsigned int i = 0; i < mission.waypoints.size(); i++)
     {
-        WayPointSettings wpp = getWaypointSettings(mMission.waypoints[i], i);
+        WayPointSettings wpp = getWaypointSettings(mission.waypoints[i], i);
         ACK::WayPointIndex wpDataACK =
             mVehicle->missionManager->wpMission->uploadIndexData(&wpp,
                                                                  mFunctionTimeout);
@@ -296,21 +297,21 @@ void DroneFlightControlTask::mission()
     }
 }
 
-WayPointInitSettings DroneFlightControlTask::getWaypointInitDefaults()
+WayPointInitSettings DroneFlightControlTask::getWaypointInitDefaults(Mission mission)
 {
     WayPointInitSettings fdata;
     fdata.indexNumber = 2;
-    fdata.maxVelocity = mMission.max_velocity;
-    fdata.idleVelocity = mMission.idle_velocity;
-    fdata.finishAction = mMission.finish_action;
-    fdata.executiveTimes = mMission.executive_times;
-    fdata.yawMode = mMission.yaw_mode;
-    fdata.traceMode = mMission.trace_mode;
-    fdata.RCLostAction = mMission.rc_lost_action;
-    fdata.gimbalPitch = mMission.gimbal_pitch;
-    fdata.latitude = mMission.latitude.rad;
-    fdata.longitude = mMission.longitude.rad;
-    fdata.altitude = mMission.altitude;
+    fdata.maxVelocity = mission.max_velocity;
+    fdata.idleVelocity = mission.idle_velocity;
+    fdata.finishAction = mission.finish_action;
+    fdata.executiveTimes = mission.executive_times;
+    fdata.yawMode = mission.yaw_mode;
+    fdata.traceMode = mission.trace_mode;
+    fdata.RCLostAction = mission.rc_lost_action;
+    fdata.gimbalPitch = mission.gimbal_pitch;
+    fdata.latitude = mission.latitude.rad;
+    fdata.longitude = mission.longitude.rad;
+    fdata.altitude = mission.altitude;
 
     return fdata;
 }
