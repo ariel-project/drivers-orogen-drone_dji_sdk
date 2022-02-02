@@ -89,8 +89,6 @@ void DroneFlightControlTask::updateHook()
     {
     case TAKEOFF_ACTIVATE:
         return takeoff();
-    case PRE_LANDING_ACTIVATE:
-        return preLand();
     case LANDING_ACTIVATE:
         return land();
     case GO_TO_ACTIVATE:
@@ -209,23 +207,6 @@ void DroneFlightControlTask::takeoff()
     }
 
     mVehicle->control->takeoff(mFunctionTimeout);
-}
-
-void DroneFlightControlTask::preLand()
-{
-    // setpoint input
-    if (_cmd_pos.read(mCmdPos) != RTT::NewData)
-        return;
-
-    auto djiDisplayMode = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>();
-
-    if (djiDisplayMode == DisplayMode::MODE_AUTO_LANDING ||
-        djiDisplayMode == DisplayMode::MODE_FORCE_AUTO_LANDING)
-    {
-        return;
-    }
-
-    goTo();
 }
 
 void DroneFlightControlTask::land()

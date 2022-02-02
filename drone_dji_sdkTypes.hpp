@@ -17,7 +17,6 @@ namespace drone_dji_sdk
     enum CommandAction
     {
         TAKEOFF_ACTIVATE,
-        PRE_LANDING_ACTIVATE,
         LANDING_ACTIVATE,
         GO_TO_ACTIVATE,
         MISSION_ACTIVATE

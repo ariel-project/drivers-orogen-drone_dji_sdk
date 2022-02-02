@@ -121,7 +121,6 @@ namespace drone_dji_sdk
 
         void goTo();
         void land();
-        void preLand();
         void takeoff();
         void mission();
 
