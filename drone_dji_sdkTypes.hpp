@@ -103,7 +103,6 @@ namespace drone_dji_sdk
         base::Angle yaw;          /*!< Yaw (rad) */
         base::Angle gimbal_pitch; /*!< Gimbal pitch */
         TurnMode turn_mode;      /*!< Turn mode <br> */
-
         int action_time_limit;
         int total_running_times;
         std::vector<Action> actions;

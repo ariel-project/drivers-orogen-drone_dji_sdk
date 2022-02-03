@@ -232,7 +232,10 @@ void DroneFlightControlTask::goTo()
     }
 
     // get the vector between aircraft and target point.
-    base::Vector3d offset = (mCmdPos.position - getRigidBodyState().position);
+    base::Vector3d position = getRigidBodyState().position;
+    // Convert to NEU
+    position[1] = -position[1];
+    base::Vector3d offset = (mCmdPos.position - position);
     // get the orientation between aircraft and target - in Deg!
     float yawInRad = base::getYaw(getRigidBodyState().orientation);
     float yawDesiredInDeg = (mCmdPos.heading.rad - yawInRad) * 180 / M_PI;
@@ -357,18 +360,19 @@ power_base::BatteryStatus DroneFlightControlTask::getBatteryStatus() const
 
 base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
 {
+    // convert everything do NWU (syskit pattern)
     base::samples::RigidBodyState cmd;
     cmd.time = base::Time::fromMilliseconds(mVehicle->broadcast->getTimeStamp().time_ms);
     cmd.orientation.w() = mVehicle->broadcast->getQuaternion().q0;
     cmd.orientation.x() = mVehicle->broadcast->getQuaternion().q1;
-    cmd.orientation.y() = mVehicle->broadcast->getQuaternion().q2;
-    cmd.orientation.z() = mVehicle->broadcast->getQuaternion().q3;
+    cmd.orientation.y() = -mVehicle->broadcast->getQuaternion().q2;
+    cmd.orientation.z() = -mVehicle->broadcast->getQuaternion().q3;
     cmd.velocity.x() = mVehicle->broadcast->getVelocity().x;
-    cmd.velocity.y() = mVehicle->broadcast->getVelocity().y;
-    cmd.velocity.z() = mVehicle->broadcast->getVelocity().z;
+    cmd.velocity.y() = -mVehicle->broadcast->getVelocity().y;
+    cmd.velocity.z() = -mVehicle->broadcast->getVelocity().z;
     cmd.angular_velocity.x() = mVehicle->broadcast->getAngularRate().x;
-    cmd.angular_velocity.y() = mVehicle->broadcast->getAngularRate().y;
-    cmd.angular_velocity.z() = mVehicle->broadcast->getAngularRate().z;
+    cmd.angular_velocity.y() = -mVehicle->broadcast->getAngularRate().y;
+    cmd.angular_velocity.z() = -mVehicle->broadcast->getAngularRate().z;
     // Get GPS position information
     Telemetry::GlobalPosition gpsInfo = mVehicle->broadcast->getGlobalPosition();
     gps_base::Solution solution;
@@ -378,9 +382,6 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
     solution.altitude = gpsInfo.altitude / 1000;
     // Convert position data from GPS to NWU
     base::samples::RigidBodyState gpsPosition = mGPSSolution.convertToNWU(solution);
-    // Convert to NEU
-    cmd.position = gpsPosition.position;
-    cmd.position[1] = -gpsPosition.position[1];
 
     return cmd;
 }
