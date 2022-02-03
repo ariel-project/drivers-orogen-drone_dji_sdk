@@ -125,6 +125,7 @@ namespace drone_dji_sdk
         void mission();
 
         // Helper Functions
+        base::Vector3d convertToGPSPosition(Waypoint cmd_waypoint);
         base::samples::RigidBodyState getRigidBodyState() const;
         power_base::BatteryStatus getBatteryStatus() const;
         WayPointInitSettings getWaypointInitDefaults(Mission mission);

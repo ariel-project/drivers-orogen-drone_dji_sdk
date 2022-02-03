@@ -290,23 +290,27 @@ WayPointInitSettings DroneFlightControlTask::getWaypointInitDefaults(Mission mis
     fdata.traceMode = mission.trace_mode;
     fdata.RCLostAction = mission.rc_lost_action;
     fdata.gimbalPitch = mission.gimbal_pitch;
-    fdata.latitude = mission.latitude.rad;
-    fdata.longitude = mission.longitude.rad;
-    fdata.altitude = mission.altitude;
+    fdata.latitude = mission.position[0];
+    fdata.longitude = mission.position[1];
+    fdata.altitude = mission.position[2];
 
     return fdata;
 }
 
 WayPointSettings DroneFlightControlTask::getWaypointSettings(Waypoint cmd_waypoint, int index)
 {
+    // Convert local position cmd to lat/long
+    base::Vector3d pos = convertToGPSPosition(cmd_waypoint);
+
     WayPointSettings wp;
     wp.index = index;
-    wp.latitude = cmd_waypoint.latitude.rad;
-    wp.longitude = cmd_waypoint.longitude.rad;
-    wp.altitude = cmd_waypoint.altitude;
+    wp.latitude = pos[0];
+    wp.longitude = pos[1];
+    wp.altitude = pos[2];
     wp.damping = cmd_waypoint.damping;
-    wp.yaw = cmd_waypoint.yaw.rad;
-    wp.gimbalPitch = cmd_waypoint.gimbal_pitch.rad;
+    // convert to degree
+    wp.yaw = cmd_waypoint.yaw.rad * 180/M_PI;
+    wp.gimbalPitch = cmd_waypoint.gimbal_pitch.rad * 180/M_PI;
     wp.turnMode = cmd_waypoint.turn_mode;
     for (int i = 0; i < 8; i++)
         wp.reserved[i] = 0;
@@ -323,6 +327,20 @@ WayPointSettings DroneFlightControlTask::getWaypointSettings(Waypoint cmd_waypoi
         wp.commandParameter[i] = cmd_waypoint.actions[i].command_parameter;
     }
     return wp;
+}
+
+base::Vector3d DroneFlightControlTask::convertToGPSPosition(Waypoint cmd_waypoint)
+{
+    base::samples::RigidBodyState cmd;
+    cmd.position = cmd_waypoint.position;
+    base::samples::RigidBodyState utm = mGPSSolution.convertNWUToUTM(cmd);
+    gps_base::Solution gps = mGPSSolution.convertUTMToGPS(utm);
+    base::Vector3d position;
+    position[0]=gps.latitude;
+    position[1]=gps.longitude;
+    position[2]=gps.altitude;
+
+    return position;
 }
 
 power_base::BatteryStatus DroneFlightControlTask::getBatteryStatus() const

@@ -98,11 +98,9 @@ namespace drone_dji_sdk
 
     struct Waypoint
     {
-        base::Angle latitude;     /*!< Latitude (radian) */
-        base::Angle longitude;    /*!< Longitude (radian) */
-        float altitude;           /*!< Altitude (relative altitude from takeoff point) */
+        base::Vector3d position;  /*!< local position cmd (m) */
         float damping;            /*!< Bend length (effective coordinated turn mode only) */
-        base::Angle yaw;          /*!< Yaw (degree) */
+        base::Angle yaw;          /*!< Yaw (rad) */
         base::Angle gimbal_pitch; /*!< Gimbal pitch */
         TurnMode turn_mode;      /*!< Turn mode <br> */
 
@@ -116,9 +114,7 @@ namespace drone_dji_sdk
         // initial waypoint settings
         float max_velocity;
         float idle_velocity;
-        base::Angle latitude;
-        base::Angle longitude;
-        float altitude;
+        base::Vector3d position;
         FinishAction finish_action;
         ExecTimes executive_times;
         YawMode yaw_mode;
