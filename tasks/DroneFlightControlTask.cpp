@@ -360,28 +360,30 @@ power_base::BatteryStatus DroneFlightControlTask::getBatteryStatus() const
 
 base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
 {
-    // convert everything do NWU (syskit pattern)
+    // convert everything do NWU (syskit pattern) and rad
     base::samples::RigidBodyState cmd;
     cmd.time = base::Time::fromMilliseconds(mVehicle->broadcast->getTimeStamp().time_ms);
-    cmd.orientation.w() = mVehicle->broadcast->getQuaternion().q0;
-    cmd.orientation.x() = mVehicle->broadcast->getQuaternion().q1;
-    cmd.orientation.y() = -mVehicle->broadcast->getQuaternion().q2;
-    cmd.orientation.z() = -mVehicle->broadcast->getQuaternion().q3;
+    cmd.orientation.w() = mVehicle->broadcast->getQuaternion().q0 * M_PI / 180;
+    cmd.orientation.x() = mVehicle->broadcast->getQuaternion().q1 * M_PI / 180;
+    cmd.orientation.y() = -mVehicle->broadcast->getQuaternion().q2 * M_PI / 180;
+    cmd.orientation.z() = -mVehicle->broadcast->getQuaternion().q3 * M_PI / 180;
     cmd.velocity.x() = mVehicle->broadcast->getVelocity().x;
     cmd.velocity.y() = -mVehicle->broadcast->getVelocity().y;
     cmd.velocity.z() = -mVehicle->broadcast->getVelocity().z;
-    cmd.angular_velocity.x() = mVehicle->broadcast->getAngularRate().x;
-    cmd.angular_velocity.y() = -mVehicle->broadcast->getAngularRate().y;
-    cmd.angular_velocity.z() = -mVehicle->broadcast->getAngularRate().z;
+    cmd.angular_velocity.x() = mVehicle->broadcast->getAngularRate().x * M_PI / 180;
+    cmd.angular_velocity.y() = -mVehicle->broadcast->getAngularRate().y * M_PI / 180;
+    cmd.angular_velocity.z() = -mVehicle->broadcast->getAngularRate().z * M_PI / 180;
     // Get GPS position information
     Telemetry::GlobalPosition gpsInfo = mVehicle->broadcast->getGlobalPosition();
     gps_base::Solution solution;
     solution.time = cmd.time;
+    // Convert to degree - Solution expect the value in degree
     solution.latitude = gpsInfo.latitude * 180 / M_PI;
     solution.longitude = gpsInfo.longitude * 180 / M_PI;
     solution.altitude = gpsInfo.altitude / 1000;
     // Convert position data from GPS to NWU
     base::samples::RigidBodyState gpsPosition = mGPSSolution.convertToNWU(solution);
+    cmd.position = gpsPosition.position;
 
     return cmd;
 }
