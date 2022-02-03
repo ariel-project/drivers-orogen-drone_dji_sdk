@@ -34,7 +34,7 @@ namespace drone_dji_sdk
          * \param name Name of the task. This name needs to be unique to make it identifiable via nameservices.
          * \param initial_state The initial TaskState of the TaskContext. Default is Stopped state.
          */
-        DroneMissionGeneratorTask(std::string const &name = "drone_dji_sdk::DroneMissionGeneratorTask");
+        DroneMissionGeneratorTask(std::string const &name = "drone_dji_sdk::DroneMissionGeneratorTask", TaskCore::TaskState initial_state = Stopped);
 
         /** Default deconstructor of DroneMissionGeneratorTask
          */

@@ -33,11 +33,9 @@ end
 
 task_context "DroneMissionGeneratorTask" do
 
-    needs_configuration
-
     input_port "cmd_input", "/base/samples/RigidBodyState"
 
-    output_port "mission", "/drone_dji_sdk/Mission"
+    output_port "cmd_mission", "/drone_dji_sdk/Mission"
 
     # Deployed with a 10ms period by default
     periodic 0.01

@@ -4,8 +4,8 @@
 
 using namespace drone_dji_sdk;
 
-DroneMissionGeneratorTask::DroneMissionGeneratorTask(std::string const &name)
-    : DroneMissionGeneratorTaskBase(name)
+DroneMissionGeneratorTask::DroneMissionGeneratorTask(std::string const &name, TaskCore::TaskState initial_state)
+    : DroneMissionGeneratorTaskBase(name, initial_state)
 {
 }
 
@@ -56,7 +56,7 @@ void DroneMissionGeneratorTask::updateHook()
         createWaypoints(gps_position);
     mission.waypoints = generatedWaypts;
 
-    _mission.write(mission);
+    _cmd_mission.write(mission);
 
     DroneMissionGeneratorTaskBase::updateHook();
 }
