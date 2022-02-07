@@ -44,6 +44,8 @@ bool DroneFlightControlTask::startHook()
     if (!DroneFlightControlTaskBase::startHook())
         return false;
 
+    mLastMission = Mission();
+
     // Obtain Control Authority
     mVehicle->obtainCtrlAuthority(mFunctionTimeout);
     return true;
@@ -255,18 +257,28 @@ void DroneFlightControlTask::mission()
     if (_cmd_mission.read(mission) != RTT::NewData)
         return;
 
+    // Check if there is a new mission, with new waypoints, actions etc
+    // Otherwise, the mission will not be started by using const generator
+    if(mLastMission == mission)
+        return;
+    mLastMission = mission;
+
     // Config mission
     if (!missionInitSettings(mission))
         return;
 
+    std::vector<base::Vector3d> positions;
     for (unsigned int i = 0; i < mission.waypoints.size(); i++)
     {
         WayPointSettings wpp = getWaypointSettings(mission.waypoints[i], i);
+        positions.push_back({wpp.latitude, wpp.longitude, wpp.altitude});
         ACK::WayPointIndex wpDataACK =
             mVehicle->missionManager->wpMission->uploadIndexData(&wpp,
                                                                  mFunctionTimeout);
         ACK::getErrorCodeMessage(wpDataACK.ack, __func__);
     }
+    // debug
+    _cmd_out_position.write(positions);
 
     // Waypoint Mission: Start
     ACK::ErrorCode startAck =
@@ -284,7 +296,7 @@ void DroneFlightControlTask::mission()
 WayPointInitSettings DroneFlightControlTask::getWaypointInitDefaults(Mission mission)
 {
     WayPointInitSettings fdata;
-    fdata.indexNumber = 2;
+    fdata.indexNumber = mission.waypoints.size();
     fdata.maxVelocity = mission.max_velocity;
     fdata.idleVelocity = mission.idle_velocity;
     fdata.finishAction = mission.finish_action;
@@ -303,17 +315,17 @@ WayPointInitSettings DroneFlightControlTask::getWaypointInitDefaults(Mission mis
 WayPointSettings DroneFlightControlTask::getWaypointSettings(Waypoint cmd_waypoint, int index)
 {
     // Convert local position cmd to lat/long
-    base::Vector3d pos = convertToGPSPosition(cmd_waypoint);
+    gps_base::Solution pos = convertToGPSPosition(cmd_waypoint);
 
     WayPointSettings wp;
     wp.index = index;
-    wp.latitude = pos[0];
-    wp.longitude = pos[1];
-    wp.altitude = pos[2];
+    wp.latitude = pos.latitude;
+    wp.longitude = pos.longitude;
+    wp.altitude = pos.altitude;
     wp.damping = cmd_waypoint.damping;
     // convert to degree
-    wp.yaw = cmd_waypoint.yaw.rad * 180/M_PI;
-    wp.gimbalPitch = cmd_waypoint.gimbal_pitch.rad * 180/M_PI;
+    wp.yaw = cmd_waypoint.yaw.getDeg();
+    wp.gimbalPitch = cmd_waypoint.gimbal_pitch.getDeg();
     wp.turnMode = cmd_waypoint.turn_mode;
     for (int i = 0; i < 8; i++)
         wp.reserved[i] = 0;
@@ -332,18 +344,14 @@ WayPointSettings DroneFlightControlTask::getWaypointSettings(Waypoint cmd_waypoi
     return wp;
 }
 
-base::Vector3d DroneFlightControlTask::convertToGPSPosition(Waypoint cmd_waypoint)
+gps_base::Solution DroneFlightControlTask::convertToGPSPosition(Waypoint cmd_waypoint)
 {
     base::samples::RigidBodyState cmd;
     cmd.position = cmd_waypoint.position;
     base::samples::RigidBodyState utm = mGPSSolution.convertNWUToUTM(cmd);
     gps_base::Solution gps = mGPSSolution.convertUTMToGPS(utm);
-    base::Vector3d position;
-    position[0]=gps.latitude;
-    position[1]=gps.longitude;
-    position[2]=gps.altitude;
 
-    return position;
+    return gps;
 }
 
 power_base::BatteryStatus DroneFlightControlTask::getBatteryStatus() const

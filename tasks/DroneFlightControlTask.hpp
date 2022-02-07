@@ -111,6 +111,7 @@ namespace drone_dji_sdk
         std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;
         CommandAction mCmdInput;
         VehicleSetpoint mCmdPos;
+        Mission mLastMission;
 
         bool initVehicle();
         bool missionInitSettings(Mission mission);
@@ -125,7 +126,7 @@ namespace drone_dji_sdk
         void mission();
 
         // Helper Functions
-        base::Vector3d convertToGPSPosition(Waypoint cmd_waypoint);
+        gps_base::Solution convertToGPSPosition(Waypoint cmd_waypoint);
         base::samples::RigidBodyState getRigidBodyState() const;
         power_base::BatteryStatus getBatteryStatus() const;
         WayPointInitSettings getWaypointInitDefaults(Mission mission);

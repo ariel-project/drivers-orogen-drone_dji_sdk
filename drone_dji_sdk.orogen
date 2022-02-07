@@ -24,6 +24,8 @@ task_context "DroneFlightControlTask" do
 
     output_port "pose_samples", "/base/samples/RigidBodyState"
     output_port "battery", "/power_base/BatteryStatus"
+    # Debug
+    output_port "cmd_out_position", "/std/vector</base/Vector3d>"
 
     runtime_states :DJI_STOPPED, :DJI_ON_GROUND, :DJI_IN_AIR
 
@@ -33,7 +35,7 @@ end
 
 task_context "DroneMissionGeneratorTask" do
 
-    input_port "cmd_input", "/base/samples/RigidBodyState"
+    needs_configuration
 
     output_port "cmd_mission", "/drone_dji_sdk/Mission"
 
