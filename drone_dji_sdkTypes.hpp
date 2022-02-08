@@ -18,7 +18,7 @@ namespace drone_dji_sdk
     {
         TAKEOFF_ACTIVATE,
         LANDING_ACTIVATE,
-        GO_TO_ACTIVATE,
+        GOTO_ACTIVATE,
         MISSION_ACTIVATE
     };
 
@@ -137,6 +137,7 @@ namespace drone_dji_sdk
     struct Mission
     {
         // initial waypoint settings
+        base::Time timestamp;
         float max_velocity;
         float idle_velocity;
         base::Vector3d position;
@@ -151,7 +152,8 @@ namespace drone_dji_sdk
         bool operator==(Mission const &m) const
         {
 
-            if (max_velocity == m.max_velocity &&
+            if (timestamp == m.timestamp &&
+                max_velocity == m.max_velocity &&
                 idle_velocity == m.idle_velocity &&
                 position == m.position &&
                 finish_action == m.finish_action &&

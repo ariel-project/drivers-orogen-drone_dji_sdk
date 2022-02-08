@@ -93,7 +93,7 @@ void DroneFlightControlTask::updateHook()
         return takeoff();
     case LANDING_ACTIVATE:
         return land();
-    case GO_TO_ACTIVATE:
+    case GOTO_ACTIVATE:
         return goTo();
     case MISSION_ACTIVATE:
         return mission();
@@ -226,7 +226,7 @@ void DroneFlightControlTask::land()
 
 void DroneFlightControlTask::goTo()
 {
-    if(mCmdInput == GO_TO_ACTIVATE)
+    if(mCmdInput == GOTO_ACTIVATE)
     {
         // setpoint input
         if (_cmd_pos.read(mCmdPos) != RTT::NewData)
@@ -238,8 +238,9 @@ void DroneFlightControlTask::goTo()
     // Convert to NEU
     position[1] = -position[1];
     base::Vector3d offset = (mCmdPos.position - position);
-    // get the orientation between aircraft and target - in Deg!
+    // get the orientation between aircraft and target.
     float yawInRad = base::getYaw(getRigidBodyState().orientation);
+    // Convert to deg!
     float yawDesiredInDeg = (mCmdPos.heading.rad - yawInRad) * 180 / M_PI;
 
     float32_t xCmd = static_cast<float>(offset[0]);
@@ -257,8 +258,7 @@ void DroneFlightControlTask::mission()
     if (_cmd_mission.read(mission) != RTT::NewData)
         return;
 
-    // Check if there is a new mission, with new waypoints, actions etc
-    // Otherwise, the mission will not be started by using const generator
+    // Check if there is a new mission, with new waypoints, actions etc.
     if(mLastMission == mission)
         return;
     mLastMission = mission;
@@ -319,11 +319,12 @@ WayPointSettings DroneFlightControlTask::getWaypointSettings(Waypoint cmd_waypoi
 
     WayPointSettings wp;
     wp.index = index;
-    wp.latitude = pos.latitude;
-    wp.longitude = pos.longitude;
+    // Convert to rad
+    wp.latitude = pos.latitude * M_PI / 180;
+    wp.longitude = pos.longitude * M_PI / 180;
     wp.altitude = pos.altitude;
     wp.damping = cmd_waypoint.damping;
-    // convert to degree
+    // convert to degree (sorry for the mess, complain to dji)
     wp.yaw = cmd_waypoint.yaw.getDeg();
     wp.gimbalPitch = cmd_waypoint.gimbal_pitch.getDeg();
     wp.turnMode = cmd_waypoint.turn_mode;
