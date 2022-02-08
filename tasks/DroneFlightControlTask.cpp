@@ -324,7 +324,7 @@ WayPointSettings DroneFlightControlTask::getWaypointSettings(Waypoint cmd_waypoi
     wp.longitude = pos.longitude * M_PI / 180;
     wp.altitude = pos.altitude;
     wp.damping = cmd_waypoint.damping;
-    // convert to degree (sorry for the mess, complain to dji)
+    // convert to degree (sorry for the mess, complain with dji)
     wp.yaw = cmd_waypoint.yaw.getDeg();
     wp.gimbalPitch = cmd_waypoint.gimbal_pitch.getDeg();
     wp.turnMode = cmd_waypoint.turn_mode;

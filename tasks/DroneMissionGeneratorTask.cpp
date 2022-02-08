@@ -4,8 +4,8 @@
 
 using namespace drone_dji_sdk;
 
-DroneMissionGeneratorTask::DroneMissionGeneratorTask(std::string const &name, TaskCore::TaskState initial_state)
-    : DroneMissionGeneratorTaskBase(name, initial_state)
+DroneMissionGeneratorTask::DroneMissionGeneratorTask(std::string const &name)
+    : DroneMissionGeneratorTaskBase(name)
 {
 }
 
@@ -21,6 +21,24 @@ bool DroneMissionGeneratorTask::configureHook()
 {
     if (!DroneMissionGeneratorTaskBase::configureHook())
         return false;
+
+    // Create mission
+    mMission.timestamp = base::Time::now();
+    mMission.max_velocity = 10;
+    mMission.idle_velocity = 5;
+    for (int i = 0; i < 3; i++)
+        mMission.position[i] = 0;
+    mMission.finish_action = FinishAction::NO_FINISH_ACTION;
+    mMission.executive_times = ExecTimes::ONCE;
+    mMission.yaw_mode = YawMode::YAW_AUTO_MODE;
+    mMission.trace_mode = TraceMode::POINT_TO_POINT;
+    mMission.rc_lost_action = RcLostAction::CONTINUE_WAYPOINT;
+    mMission.gimbal_pitch = GimbalPitch::FREE_MODE;
+
+    std::vector<Waypoint> generatedWaypts =
+        createWaypoints();
+    mMission.waypoints = generatedWaypts;
+
     return true;
 }
 
@@ -34,35 +52,13 @@ bool DroneMissionGeneratorTask::startHook()
 
 void DroneMissionGeneratorTask::updateHook()
 {
-    // cmd input
-    base::samples::RigidBodyState gps_position;
-    if (_cmd_input.read(gps_position) == RTT::NoData)
-        return;
-
-    // Create mission
-    Mission mission;
-    mission.max_velocity = 10;
-    mission.idle_velocity = 5;
-    for(int i=0;i<3;i++)
-        mission.position[i] = 0;
-    mission.finish_action = FinishAction::NO_FINISH_ACTION;
-    mission.executive_times = ExecTimes::ONCE;
-    mission.yaw_mode = YawMode::YAW_AUTO_MODE;
-    mission.trace_mode = TraceMode::POINT_TO_POINT;
-    mission.rc_lost_action = RcLostAction::CONTINUE_WAYPOINT;
-    mission.gimbal_pitch = GimbalPitch::FREE_MODE;
-
-    std::vector<Waypoint> generatedWaypts =
-        createWaypoints(gps_position);
-    mission.waypoints = generatedWaypts;
-
-    _cmd_mission.write(mission);
+    _cmd_mission.write(mMission);
 
     DroneMissionGeneratorTaskBase::updateHook();
 }
 
 std::vector<Waypoint>
-DroneMissionGeneratorTask::createWaypoints(base::samples::RigidBodyState gps_position)
+DroneMissionGeneratorTask::createWaypoints()
 {
     // Create generic waypoint settings
     Waypoint wp;
@@ -72,21 +68,26 @@ DroneMissionGeneratorTask::createWaypoints(base::samples::RigidBodyState gps_pos
     wp.turn_mode = TurnMode::CLOCKWISE;
     wp.action_time_limit = 100;
     wp.total_running_times = 0;
-    for (int i = 0; i < 16; ++i)
-    {
-        wp.actions[i].command = 0;
-        wp.actions[i].command_parameter = 0;
-    }
+    Action actions;
+    actions.command = 0;
+    actions.command_parameter = 0;
+    for (int i = 0; i < 16; i++)
+        wp.actions.push_back(actions);
     // Create waypoints vector
     std::vector<Waypoint> wp_list;
-    // Create circle
-    for (int i = 1; i < 10; i++)
-    {
-        wp.position[0] = sin(0.8*1000*base::Time::Milliseconds);
-        wp.position[1] = cos(0.8*1000*base::Time::Milliseconds);
-        wp.position[2] = 8;
-        wp_list.push_back(wp);
-    }
+    // Create polygon
+    wp.position[0] = 10;
+    wp.position[1] = 0;
+    wp.position[2] = 8;
+    wp_list.push_back(wp);
+    wp.position[0] = 0;
+    wp.position[1] = 10;
+    wp.position[2] = 12;
+    wp_list.push_back(wp);
+    wp.position[0] = 0;
+    wp.position[1] = -10;
+    wp.position[2] = 5;
+    wp_list.push_back(wp);
     return wp_list;
 }
 
@@ -96,7 +97,6 @@ void DroneMissionGeneratorTask::errorHook()
 }
 void DroneMissionGeneratorTask::stopHook()
 {
-
     DroneMissionGeneratorTaskBase::stopHook();
 }
 void DroneMissionGeneratorTask::cleanupHook()

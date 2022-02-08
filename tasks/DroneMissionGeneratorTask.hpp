@@ -34,7 +34,7 @@ namespace drone_dji_sdk
          * \param name Name of the task. This name needs to be unique to make it identifiable via nameservices.
          * \param initial_state The initial TaskState of the TaskContext. Default is Stopped state.
          */
-        DroneMissionGeneratorTask(std::string const &name = "drone_dji_sdk::DroneMissionGeneratorTask", TaskCore::TaskState initial_state = Stopped);
+        DroneMissionGeneratorTask(std::string const &name = "drone_dji_sdk::DroneMissionGeneratorTask");
 
         /** Default deconstructor of DroneMissionGeneratorTask
          */
@@ -100,8 +100,8 @@ namespace drone_dji_sdk
 
     private:
         
-        std::vector<Waypoint>
-            createWaypoints(base::samples::RigidBodyState gps_position);
+        Mission mMission;
+        std::vector<Waypoint> createWaypoints();
 
     };
 }
