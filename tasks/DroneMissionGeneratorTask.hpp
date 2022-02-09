@@ -1,46 +1,44 @@
 /* Generated from orogen/lib/orogen/templates/tasks/Task.hpp */
 
-#ifndef DRONE_DJI_SDK_TASK_TASK_HPP
-#define DRONE_DJI_SDK_TASK_TASK_HPP
+#ifndef DRONE_DJI_SDK_DroneMissionGeneratorTask_TASK_HPP
+#define DRONE_DJI_SDK_DroneMissionGeneratorTask_TASK_HPP
 
-#include "drone_dji_sdk/TaskBase.hpp"
+#include "drone_dji_sdk/DroneMissionGeneratorTaskBase.hpp"
+#include "drone_dji_sdkTypes.hpp"
 
-namespace drone_dji_sdk{
 
-    /*! \class Task
+namespace drone_dji_sdk
+{
+
+    /*! \class DroneMissionGeneratorTask
      * \brief The task context provides and requires services. It uses an ExecutionEngine to perform its functions.
      * Essential interfaces are operations, data flow ports and properties. These interfaces have been defined using the oroGen specification.
      * In order to modify the interfaces you should (re)use oroGen and rely on the associated workflow.
-     * Declare a new task context (i.e., a component)
-
-The corresponding C++ class can be edited in tasks/Task.hpp and
-tasks/Task.cpp, and will be put in the drone_dji_sdk namespace.
+     * 
      * \details
      * The name of a TaskContext is primarily defined via:
      \verbatim
      deployment 'deployment_name'
-         task('custom_task_name','drone_dji_sdk::Task')
+         task('custom_task_name','drone_dji_sdk::DroneMissionGeneratorTask')
      end
      \endverbatim
      *  It can be dynamically adapted when the deployment is called with a prefix argument.
      */
-    class Task : public TaskBase
+    class DroneMissionGeneratorTask : public DroneMissionGeneratorTaskBase
     {
-	friend class TaskBase;
+        friend class DroneMissionGeneratorTaskBase;
+
     protected:
-
-
-
     public:
-        /** TaskContext constructor for Task
+        /** TaskContext constructor for DroneMissionGeneratorTask
          * \param name Name of the task. This name needs to be unique to make it identifiable via nameservices.
          * \param initial_state The initial TaskState of the TaskContext. Default is Stopped state.
          */
-        Task(std::string const& name = "drone_dji_sdk::Task");
+        DroneMissionGeneratorTask(std::string const &name = "drone_dji_sdk::DroneMissionGeneratorTask");
 
-        /** Default deconstructor of Task
+        /** Default deconstructor of DroneMissionGeneratorTask
          */
-	~Task();
+        ~DroneMissionGeneratorTask();
 
         /** This hook is called by Orocos when the state machine transitions
          * from PreOperational to Stopped. If it returns false, then the
@@ -99,8 +97,12 @@ tasks/Task.cpp, and will be put in the drone_dji_sdk namespace.
          * before calling start() again.
          */
         void cleanupHook();
+
+    private:
+        
+        Mission mMission;
+        std::vector<Waypoint> createWaypoints();
+
     };
 }
-
 #endif
-
