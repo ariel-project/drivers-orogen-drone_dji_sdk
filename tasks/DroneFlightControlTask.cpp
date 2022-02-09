@@ -238,10 +238,8 @@ void DroneFlightControlTask::goTo()
     // Convert to NEU
     position[1] = -position[1];
     base::Vector3d offset = (mCmdPos.position - position);
-    // get the orientation between aircraft and target.
-    float yawInRad = base::getYaw(getRigidBodyState().orientation);
     // Convert to deg!
-    float yawDesiredInDeg = (mCmdPos.heading.rad - yawInRad) * 180 / M_PI;
+    float yawDesiredInDeg = (mCmdPos.heading.rad) * 180 / M_PI;
 
     float32_t xCmd = static_cast<float>(offset[0]);
     float32_t yCmd = static_cast<float>(offset[1]);
@@ -372,16 +370,18 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
     // convert everything do NWU (syskit pattern) and rad
     base::samples::RigidBodyState cmd;
     cmd.time = base::Time::fromMilliseconds(mVehicle->broadcast->getTimeStamp().time_ms);
-    cmd.orientation.w() = mVehicle->broadcast->getQuaternion().q0 * M_PI / 180;
-    cmd.orientation.x() = mVehicle->broadcast->getQuaternion().q1 * M_PI / 180;
-    cmd.orientation.y() = -mVehicle->broadcast->getQuaternion().q2 * M_PI / 180;
-    cmd.orientation.z() = -mVehicle->broadcast->getQuaternion().q3 * M_PI / 180;
+    Telemetry::Quaternion orientation = mVehicle->broadcast->getQuaternion();
+    Eigen::Quaterniond q_bodyned2ned(orientation.q0, orientation.q1, orientation.q2,
+                                     orientation.q3);
+    Eigen::Quaterniond q_ned2nwu = Eigen::Quaterniond(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()));
+    Eigen::Quaterniond q_bodynwu2nwu = q_ned2nwu * q_bodyned2ned * q_ned2nwu.conjugate();
+    cmd.orientation = q_bodynwu2nwu;
     cmd.velocity.x() = mVehicle->broadcast->getVelocity().x;
     cmd.velocity.y() = -mVehicle->broadcast->getVelocity().y;
     cmd.velocity.z() = -mVehicle->broadcast->getVelocity().z;
-    cmd.angular_velocity.x() = mVehicle->broadcast->getAngularRate().x * M_PI / 180;
-    cmd.angular_velocity.y() = -mVehicle->broadcast->getAngularRate().y * M_PI / 180;
-    cmd.angular_velocity.z() = -mVehicle->broadcast->getAngularRate().z * M_PI / 180;
+    cmd.angular_velocity.x() = mVehicle->broadcast->getAngularRate().x;
+    cmd.angular_velocity.y() = -mVehicle->broadcast->getAngularRate().y;
+    cmd.angular_velocity.z() = -mVehicle->broadcast->getAngularRate().z;
     // Get GPS position information
     Telemetry::GlobalPosition gpsInfo = mVehicle->broadcast->getGlobalPosition();
     gps_base::Solution solution;
