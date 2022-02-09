@@ -97,12 +97,8 @@ namespace drone_dji_sdk
 
         bool operator==(Action const &m) const
         {
-
-            if (command == m.command &&
-                command_parameter == m.command_parameter)
-                return true;
-
-            return false;
+            return (command == m.command &&
+                    command_parameter == m.command_parameter);
         }
     };
 
@@ -119,18 +115,14 @@ namespace drone_dji_sdk
 
         bool operator==(Waypoint const &m) const
         {
-
-            if (position == m.position &&
-                damping == m.damping &&
-                yaw.rad == m.yaw.rad &&
-                gimbal_pitch.rad == m.gimbal_pitch.rad &&
-                turn_mode == m.turn_mode &&
-                action_time_limit == m.action_time_limit &&
-                total_running_times == m.total_running_times &&
-                actions == m.actions)
-                return true;
-
-            return false;
+            return (position == m.position &&
+                    damping == m.damping &&
+                    yaw.rad == m.yaw.rad &&
+                    gimbal_pitch.rad == m.gimbal_pitch.rad &&
+                    turn_mode == m.turn_mode &&
+                    action_time_limit == m.action_time_limit &&
+                    total_running_times == m.total_running_times &&
+                    actions == m.actions);
         }
     };
 
@@ -152,20 +144,17 @@ namespace drone_dji_sdk
         bool operator==(Mission const &m) const
         {
 
-            if (timestamp == m.timestamp &&
-                max_velocity == m.max_velocity &&
-                idle_velocity == m.idle_velocity &&
-                position == m.position &&
-                finish_action == m.finish_action &&
-                executive_times == m.executive_times &&
-                yaw_mode == m.yaw_mode &&
-                trace_mode == m.trace_mode &&
-                rc_lost_action == m.rc_lost_action &&
-                gimbal_pitch == m.gimbal_pitch &&
-                waypoints == m.waypoints)
-                return true;
-
-            return false;
+            return (timestamp == m.timestamp &&
+                    max_velocity == m.max_velocity &&
+                    idle_velocity == m.idle_velocity &&
+                    position == m.position &&
+                    finish_action == m.finish_action &&
+                    executive_times == m.executive_times &&
+                    yaw_mode == m.yaw_mode &&
+                    trace_mode == m.trace_mode &&
+                    rc_lost_action == m.rc_lost_action &&
+                    gimbal_pitch == m.gimbal_pitch &&
+                    waypoints == m.waypoints);
         }
     };
 }
