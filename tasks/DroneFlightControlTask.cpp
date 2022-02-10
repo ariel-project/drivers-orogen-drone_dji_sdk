@@ -30,6 +30,8 @@ bool DroneFlightControlTask::configureHook()
 
     // Configure GPS stuffs
     mGPSSolution.setParameters(_utm_parameters.get());
+    // Get pre land distance threshold
+    mPositionThreshold = _pre_land_distance_threshold.get();
 
     if (!initVehicle())
         return false;
@@ -213,6 +215,11 @@ void DroneFlightControlTask::takeoff()
 
 void DroneFlightControlTask::land()
 {
+
+    // setpoint input
+    if (_cmd_pos.read(mCmdPos) != RTT::NewData)
+        return;
+
     auto djiDisplayMode = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>();
 
     if (djiDisplayMode == DisplayMode::MODE_AUTO_LANDING ||
@@ -221,7 +228,22 @@ void DroneFlightControlTask::land()
         return;
     }
 
+    if(!checkDistanceThreshold(mCmdPos))
+    {
+        goTo();
+        return;
+    }
     mVehicle->control->land(mFunctionTimeout);
+}
+
+bool DroneFlightControlTask::checkDistanceThreshold(drone_dji_sdk::VehicleSetpoint pos)
+{
+    // get position
+    base::samples::RigidBodyState current_position = getRigidBodyState();
+    // get distance
+    base::Vector3d dist = pos.position - current_position.position;
+
+    return (dist.norm() < mPositionThreshold);
 }
 
 void DroneFlightControlTask::goTo()
@@ -235,16 +257,15 @@ void DroneFlightControlTask::goTo()
 
     // get the vector between aircraft and target point.
     base::Vector3d position = getRigidBodyState().position;
-    // Convert to NEU
-    position[1] = -position[1];
+    // get offset
     base::Vector3d offset = (mCmdPos.position - position);
     // Convert to deg!
     float yawDesiredInDeg = (mCmdPos.heading.rad) * 180 / M_PI;
 
+    // Convert to NEU
     float32_t xCmd = static_cast<float>(offset[0]);
-    float32_t yCmd = static_cast<float>(offset[1]);
-    float32_t zCmd = static_cast<float>(mCmdPos.position[2]) +
-                                        static_cast<float>(getRigidBodyState().position[2]);
+    float32_t yCmd = - static_cast<float>(offset[1]);
+    float32_t zCmd = static_cast<float>(mCmdPos.position[2]);
 
     mVehicle->control->positionAndYawCtrl(xCmd, yCmd, zCmd, yawDesiredInDeg);
 }
@@ -367,7 +388,7 @@ power_base::BatteryStatus DroneFlightControlTask::getBatteryStatus() const
 
 base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
 {
-    // convert everything do NWU (syskit pattern) and rad
+    // convert everything do NWU (Rock convention)
     base::samples::RigidBodyState cmd;
     cmd.time = base::Time::fromMilliseconds(mVehicle->broadcast->getTimeStamp().time_ms);
     Telemetry::Quaternion orientation = mVehicle->broadcast->getQuaternion();
@@ -389,10 +410,9 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
     // Convert to degree - Solution expect the value in degree
     solution.latitude = gpsInfo.latitude * 180 / M_PI;
     solution.longitude = gpsInfo.longitude * 180 / M_PI;
-    solution.altitude = gpsInfo.altitude / 1000;
+    solution.altitude = gpsInfo.height;
     // Convert position data from GPS to NWU
-    base::samples::RigidBodyState gpsPosition = mGPSSolution.convertToNWU(solution);
-    cmd.position = gpsPosition.position;
+    cmd.position = mGPSSolution.convertToNWU(solution).position;;
 
     return cmd;
 }

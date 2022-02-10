@@ -106,6 +106,7 @@ namespace drone_dji_sdk
 
         uint32_t mFunctionTimeout;
         int mStatusFreqInHz;
+        double mPositionThreshold;
         Vehicle::ActivateData mActivateData;
         gps_base::UTMConverter mGPSSolution;
         std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;
@@ -126,6 +127,7 @@ namespace drone_dji_sdk
         void mission();
 
         // Helper Functions
+        bool checkDistanceThreshold(drone_dji_sdk::VehicleSetpoint pos);
         gps_base::Solution convertToGPSPosition(Waypoint cmd_waypoint);
         base::samples::RigidBodyState getRigidBodyState() const;
         power_base::BatteryStatus getBatteryStatus() const;
