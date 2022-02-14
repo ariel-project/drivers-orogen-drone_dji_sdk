@@ -4,6 +4,11 @@
   </description>
   <author>Rodrigo Santos Leonello/rodrigo.leonello@tidewise.io</author>
   <license>Proprietary</license>
+
+  <depend package= "libusb1" />
+  <depend package= "libavcodec" />
+  <depend package= "libswscale" />
+
   <depend package="base/cmake" />
   <depend package="base/types" />
   <depend package="base/logging" />
