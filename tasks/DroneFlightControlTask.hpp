@@ -110,21 +110,19 @@ namespace drone_dji_sdk
         Vehicle::ActivateData mActivateData;
         gps_base::UTMConverter mGPSSolution;
         std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;
-        CommandAction mCmdInput;
-        VehicleSetpoint mCmdPos;
         Mission mLastMission;
 
         bool initVehicle();
-        bool missionInitSettings(Mission mission);
+        bool missionInitSettings(Mission wypMission);
         bool checkTelemetrySubscription();
         bool setUpSubscription(int pkgIndex, int freq,
                                std::vector<Telemetry::TopicName> topicList);
         bool teardownSubscription(const int pkgIndex);
 
-        void goTo();
-        void land();
-        void takeoff();
-        void mission();
+        void goTo(VehicleSetpoint setpoint);
+        void land(VehicleSetpoint setpoint);
+        void takeoff(VehicleSetpoint setpoint);
+        void mission(Mission wypMission);
 
         // Helper Functions
         bool checkDistanceThreshold(drone_dji_sdk::VehicleSetpoint pos);
