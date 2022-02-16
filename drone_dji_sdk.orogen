@@ -16,6 +16,7 @@ task_context "DroneFlightControlTask" do
     property "app_key", "/std/string", ""
     property "device", "/std/string", ""
     property "baudrate", "/uint32_t", 230_400
+    property "pre_land_distance_threshold", "double", 1
     property "utm_parameters", "gps_base/UTMConversionParameters"
 
     input_port "cmd_input", "drone_dji_sdk/CommandAction"
