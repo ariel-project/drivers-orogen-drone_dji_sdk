@@ -49,7 +49,10 @@ bool DroneFlightControlTask::startHook()
     mLastMission = Mission();
 
     // Obtain Control Authority
-    mVehicle->obtainCtrlAuthority(mFunctionTimeout);
+    mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
+    if(!_telemetry_mode.get() && !ACK::getError(mAuthorityStatus))
+        return false;
+
     return true;
 }
 
@@ -73,6 +76,7 @@ void DroneFlightControlTask::updateHook()
 {
     _pose_samples.write(getRigidBodyState());
     _battery.write(getBatteryStatus());
+    _authority_status.write(ACK::getError(mAuthorityStatus));
 
         // Check status
     auto djiStatusFlight = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();

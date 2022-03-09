@@ -16,6 +16,7 @@ task_context "DroneFlightControlTask" do
     property "app_key", "/std/string", ""
     property "device", "/std/string", ""
     property "baudrate", "/uint32_t", 230_400
+    property "telemetry_mode", "/bool"
     property "pre_land_distance_threshold", "double", 1
     property "utm_parameters", "gps_base/UTMConversionParameters"
 
@@ -27,6 +28,7 @@ task_context "DroneFlightControlTask" do
     output_port "battery", "/power_base/BatteryStatus"
     # Debug
     output_port "cmd_out_position", "/std/vector</base/Vector3d>"
+    output_port "authority_status", "/bool"
 
     runtime_states :DJI_STOPPED, :DJI_ON_GROUND, :DJI_IN_AIR
 
