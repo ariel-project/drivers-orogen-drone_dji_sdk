@@ -111,6 +111,7 @@ namespace drone_dji_sdk
         gps_base::UTMConverter mGPSSolution;
         std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;
         Mission mLastMission;
+        DJI::OSDK::ACK::ErrorCode mAuthorityStatus;
 
         bool initVehicle();
         bool missionInitSettings(Mission wypMission);
