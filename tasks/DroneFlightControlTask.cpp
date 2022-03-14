@@ -50,7 +50,7 @@ bool DroneFlightControlTask::startHook()
 
     // Obtain Control Authority
     mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
-    if(!_telemetry_mode.get() && !ACK::getError(mAuthorityStatus))
+    if(!_telemetry_mode.get() && mAuthorityStatus == ACK::FAIL)
         return false;
 
     return true;
