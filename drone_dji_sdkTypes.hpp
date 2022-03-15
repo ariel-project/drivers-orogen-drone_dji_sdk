@@ -163,10 +163,17 @@ namespace drone_dji_sdk
         SDK
     };
 
+    enum DeviceFlightStatus
+    {
+        Close,
+        Opened
+    };
+
     struct Status
     {
         AuthorityRequestResult authority_status;
         ControlDevice control_device;
+        DeviceFlightStatus device_flight_status;
     };
 } // namespace drone_dji_sdk
 

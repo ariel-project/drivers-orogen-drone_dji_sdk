@@ -77,6 +77,8 @@ void DroneFlightControlTask::updateHook()
     auto control_device =
         mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
     mStatus.control_device = static_cast<ControlDevice>(control_device.deviceStatus);
+    mStatus.device_flight_status =
+        static_cast<DeviceFlightStatus>(control_device.flightStatus);
     _status.write(mStatus);
 
     // cmd input
