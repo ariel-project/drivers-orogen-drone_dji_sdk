@@ -47,6 +47,7 @@ bool DroneFlightControlTask::startHook()
     mLastMission = Mission();
 
     mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
+    ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
     return true;
 }
 
@@ -77,6 +78,19 @@ void DroneFlightControlTask::updateHook()
         mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
     mStatus.control_device = static_cast<ControlDevice>(control_device.deviceStatus);
     _status.write(mStatus);
+
+    // cmd input
+    drone_dji_sdk::CommandAction cmd_input;
+    if (_cmd_input.read(cmd_input) == RTT::NoData)
+    {
+        return;
+    }
+    else if (mStatus.authority_status == AuthorityRequestResult::Failure)
+    {
+        mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
+        ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
+    }
+
     if (!checkControlAvailability())
     {
         if (state() != CONTROL_LOST)
@@ -92,11 +106,6 @@ void DroneFlightControlTask::updateHook()
     DroneFlightControlTask::States status = djiStatusFlightToTaskState(djiStatusFlight);
     if (state() != status)
         state(status);
-
-    // cmd input
-    drone_dji_sdk::CommandAction cmd_input;
-    if (_cmd_input.read(cmd_input) == RTT::NoData)
-        return;
 
     if (djiStatusFlight != VehicleStatus::FlightStatus::IN_AIR &&
         cmd_input != TAKEOFF_ACTIVATE)
