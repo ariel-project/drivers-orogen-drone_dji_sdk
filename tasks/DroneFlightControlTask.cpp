@@ -70,17 +70,18 @@ void DroneFlightControlTask::updateHook()
 {
     _pose_samples.write(getRigidBodyState());
     _battery.write(getBatteryStatus());
-    mStatus.authority_status = ACK::getError(mAuthorityStatus);
+    mStatus.authority_status =
+        static_cast<AuthorityRequestResult>(ACK::getError(mAuthorityStatus));
 
     auto control_device =
         mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
-    mStatus.control_device = control_device.deviceStatus;
+    mStatus.control_device = static_cast<ControlDevice>(control_device.deviceStatus);
     _status.write(mStatus);
     if (!checkControlAvailability())
     {
-        if (state() != DroneFlightControlTask::States::CONTROL_LOST)
+        if (state() != CONTROL_LOST)
         {
-            state(DroneFlightControlTask::States::CONTROL_LOST);
+            state(CONTROL_LOST);
         }
         return;
     }
