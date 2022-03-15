@@ -157,6 +157,12 @@ namespace drone_dji_sdk
                     waypoints == m.waypoints);
         }
     };
+
+    struct Status
+    {
+        bool authority_status;
+        uint8_t control_device;
+    };
 }
 
 #endif

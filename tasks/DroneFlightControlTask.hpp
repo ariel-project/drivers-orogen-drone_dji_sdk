@@ -112,6 +112,7 @@ namespace drone_dji_sdk
         std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;
         Mission mLastMission;
         DJI::OSDK::ACK::ErrorCode mAuthorityStatus;
+        Status mStatus;
 
         bool initVehicle();
         bool missionInitSettings(Mission wypMission);
@@ -133,6 +134,12 @@ namespace drone_dji_sdk
         WayPointInitSettings getWaypointInitDefaults(Mission mission);
         WayPointSettings getWaypointSettings(Waypoint cmd_waypoint, int index);
 
+        /**
+         * Check if control over the drone if available for the SDK to obtain.
+         * 
+         * @return whether the SDK can obtain control of the drone.
+         */
+        bool checkControlAvailability();
     };
 }
 #endif

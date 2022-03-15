@@ -6,14 +6,12 @@ using namespace DJI::OSDK;
 using namespace drone_dji_sdk;
 using namespace VehicleStatus;
 
-DroneFlightControlTask::DroneFlightControlTask(std::string const &name)
+DroneFlightControlTask::DroneFlightControlTask(std::string const& name)
     : DroneFlightControlTaskBase(name)
 {
 }
 
-DroneFlightControlTask::~DroneFlightControlTask()
-{
-}
+DroneFlightControlTask::~DroneFlightControlTask() {}
 
 /// The following lines are template definitions for the various state machine
 // hooks defined by Orocos::RTT. See DroneFlightControlTask.hpp for more detailed
@@ -48,11 +46,7 @@ bool DroneFlightControlTask::startHook()
 
     mLastMission = Mission();
 
-    // Obtain Control Authority
     mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
-    if(!_telemetry_mode.get() && mAuthorityStatus == ACK::FAIL)
-        return false;
-
     return true;
 }
 
@@ -61,12 +55,12 @@ static TaskState djiStatusFlightToTaskState(uint8_t status)
 {
     switch (status)
     {
-    case DJI::OSDK::VehicleStatus::FlightStatus::STOPED:
-        return TaskState::DJI_STOPPED;
-    case DJI::OSDK::VehicleStatus::FlightStatus::ON_GROUND:
-        return TaskState::DJI_ON_GROUND;
-    case DJI::OSDK::VehicleStatus::FlightStatus::IN_AIR:
-        return TaskState::DJI_IN_AIR;
+        case DJI::OSDK::VehicleStatus::FlightStatus::STOPED:
+            return TaskState::DJI_STOPPED;
+        case DJI::OSDK::VehicleStatus::FlightStatus::ON_GROUND:
+            return TaskState::DJI_ON_GROUND;
+        case DJI::OSDK::VehicleStatus::FlightStatus::IN_AIR:
+            return TaskState::DJI_IN_AIR;
     }
     // Never reached
     throw std::invalid_argument("invalid controller state");
@@ -76,10 +70,24 @@ void DroneFlightControlTask::updateHook()
 {
     _pose_samples.write(getRigidBodyState());
     _battery.write(getBatteryStatus());
-    _authority_status.write(ACK::getError(mAuthorityStatus));
+    mStatus.authority_status = ACK::getError(mAuthorityStatus);
 
-        // Check status
-    auto djiStatusFlight = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
+    auto control_device =
+        mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
+    mStatus.control_device = control_device.deviceStatus;
+    _status.write(mStatus);
+    if (!checkControlAvailability())
+    {
+        if (state() != DroneFlightControlTask::States::CONTROL_LOST)
+        {
+            state(DroneFlightControlTask::States::CONTROL_LOST);
+        }
+        return;
+    }
+
+    // Check status
+    auto djiStatusFlight =
+        mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
     DroneFlightControlTask::States status = djiStatusFlightToTaskState(djiStatusFlight);
     if (state() != status)
         state(status);
@@ -89,53 +97,51 @@ void DroneFlightControlTask::updateHook()
     if (_cmd_input.read(cmd_input) == RTT::NoData)
         return;
 
-    if (djiStatusFlight != VehicleStatus::FlightStatus::IN_AIR && cmd_input != TAKEOFF_ACTIVATE)
+    if (djiStatusFlight != VehicleStatus::FlightStatus::IN_AIR &&
+        cmd_input != TAKEOFF_ACTIVATE)
     {
         return;
     }
 
     switch (cmd_input)
     {
-    case TAKEOFF_ACTIVATE:
-    {
-        // setpoint input
-        VehicleSetpoint setpoint;
-        if (_cmd_pos.read(setpoint) != RTT::NewData)
-            return;
-        return takeoff(setpoint);
-    }
-    case LANDING_ACTIVATE:
-    {
-        // setpoint input
-        VehicleSetpoint setpoint;
-        if (_cmd_pos.read(setpoint) != RTT::NewData)
-            return;
-        return land(setpoint);
-    }
-    case GOTO_ACTIVATE:
-    {
-        // setpoint input
-        VehicleSetpoint setpoint;
-        if (_cmd_pos.read(setpoint) != RTT::NewData)
-            return;
-        return goTo(setpoint);
-    }
-    case MISSION_ACTIVATE:
-    {
-        // waypoint input
-        Mission wypMission;
-        if (_cmd_mission.read(wypMission) != RTT::NewData)
-            return;
-        return mission(wypMission);
-    }
+        case TAKEOFF_ACTIVATE:
+        {
+            // setpoint input
+            VehicleSetpoint setpoint;
+            if (_cmd_pos.read(setpoint) != RTT::NewData)
+                return;
+            return takeoff(setpoint);
+        }
+        case LANDING_ACTIVATE:
+        {
+            // setpoint input
+            VehicleSetpoint setpoint;
+            if (_cmd_pos.read(setpoint) != RTT::NewData)
+                return;
+            return land(setpoint);
+        }
+        case GOTO_ACTIVATE:
+        {
+            // setpoint input
+            VehicleSetpoint setpoint;
+            if (_cmd_pos.read(setpoint) != RTT::NewData)
+                return;
+            return goTo(setpoint);
+        }
+        case MISSION_ACTIVATE:
+        {
+            // waypoint input
+            Mission wypMission;
+            if (_cmd_mission.read(wypMission) != RTT::NewData)
+                return;
+            return mission(wypMission);
+        }
     }
 
     DroneFlightControlTaskBase::updateHook();
 }
-void DroneFlightControlTask::errorHook()
-{
-    DroneFlightControlTaskBase::errorHook();
-}
+void DroneFlightControlTask::errorHook() { DroneFlightControlTaskBase::errorHook(); }
 void DroneFlightControlTask::stopHook()
 {
     mVehicle->releaseCtrlAuthority(mFunctionTimeout);
@@ -156,10 +162,11 @@ bool DroneFlightControlTask::initVehicle()
 {
     bool threadSupport = true;
     bool useAdvancedSensing = false;
-    std::unique_ptr<Vehicle> vehicle(new Vehicle(_device.get().c_str(),
-                                                 _baudrate.get(),
-                                                 threadSupport,
-                                                 useAdvancedSensing));
+    std::unique_ptr<Vehicle> vehicle(new Vehicle(
+        _device.get().c_str(),
+        _baudrate.get(),
+        threadSupport,
+        useAdvancedSensing));
 
     // Check if the communication is working fine
     if (!vehicle->protocolLayer->getDriver()->getDeviceStatus())
@@ -191,8 +198,12 @@ bool DroneFlightControlTask::checkTelemetrySubscription()
     /*! Verify and setup the subscription */
     // Status flight, status display mode, Topic quaternion and GPS fused
     const int pkgIndex = 0;
-    std::vector<Telemetry::TopicName> topicList = {Telemetry::TOPIC_STATUS_FLIGHT, Telemetry::TOPIC_STATUS_DISPLAYMODE,
-                                                   Telemetry::TOPIC_QUATERNION, Telemetry::TOPIC_GPS_FUSED};
+    std::vector<Telemetry::TopicName> topicList = {
+        Telemetry::TOPIC_STATUS_FLIGHT,
+        Telemetry::TOPIC_STATUS_DISPLAYMODE,
+        Telemetry::TOPIC_QUATERNION,
+        Telemetry::TOPIC_GPS_FUSED,
+        Telemetry::TOPIC_CONTROL_DEVICE};
     if (!setUpSubscription(pkgIndex, mStatusFreqInHz, topicList))
         return false;
 
@@ -207,7 +218,9 @@ bool DroneFlightControlTask::missionInitSettings(Mission wypMission)
     WayPointInitSettings fdata = getWaypointInitDefaults(wypMission);
 
     ACK::ErrorCode initAck = mVehicle->missionManager->init(
-        DJI_MISSION_TYPE::WAYPOINT, mFunctionTimeout, &fdata);
+        DJI_MISSION_TYPE::WAYPOINT,
+        mFunctionTimeout,
+        &fdata);
     if (ACK::getError(initAck))
     {
         ACK::getErrorCodeMessage(initAck, __func__);
@@ -220,8 +233,10 @@ bool DroneFlightControlTask::missionInitSettings(Mission wypMission)
 
 void DroneFlightControlTask::takeoff(VehicleSetpoint setpoint)
 {
-    auto djiStatusFlight = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
-    auto djiDisplayMode = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>();
+    auto djiStatusFlight =
+        mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
+    auto djiDisplayMode =
+        mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>();
 
     if (djiDisplayMode == DisplayMode::MODE_ASSISTED_TAKEOFF ||
         djiDisplayMode == DisplayMode::MODE_AUTO_TAKEOFF)
@@ -240,7 +255,8 @@ void DroneFlightControlTask::takeoff(VehicleSetpoint setpoint)
 
 void DroneFlightControlTask::land(VehicleSetpoint setpoint)
 {
-    auto djiDisplayMode = mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>();
+    auto djiDisplayMode =
+        mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_DISPLAYMODE>();
 
     if (djiDisplayMode == DisplayMode::MODE_AUTO_LANDING ||
         djiDisplayMode == DisplayMode::MODE_FORCE_AUTO_LANDING)
@@ -248,7 +264,7 @@ void DroneFlightControlTask::land(VehicleSetpoint setpoint)
         return;
     }
 
-    if(!checkDistanceThreshold(setpoint))
+    if (!checkDistanceThreshold(setpoint))
     {
         goTo(setpoint);
         return;
@@ -277,7 +293,7 @@ void DroneFlightControlTask::goTo(VehicleSetpoint setpoint)
 
     // Convert to NEU
     float32_t xCmd = static_cast<float>(offset[0]);
-    float32_t yCmd = - static_cast<float>(offset[1]);
+    float32_t yCmd = -static_cast<float>(offset[1]);
     float32_t zCmd = static_cast<float>(setpoint.position[2]);
 
     mVehicle->control->positionAndYawCtrl(xCmd, yCmd, zCmd, yawDesiredInDeg);
@@ -286,7 +302,7 @@ void DroneFlightControlTask::goTo(VehicleSetpoint setpoint)
 void DroneFlightControlTask::mission(Mission wypMission)
 {
     // Check if there is a new mission, with new waypoints, actions etc.
-    if(mLastMission == wypMission)
+    if (mLastMission == wypMission)
         return;
     mLastMission = wypMission;
 
@@ -300,8 +316,7 @@ void DroneFlightControlTask::mission(Mission wypMission)
         WayPointSettings wpp = getWaypointSettings(wypMission.waypoints[i], i);
         positions.push_back({wpp.latitude, wpp.longitude, wpp.altitude});
         ACK::WayPointIndex wpDataACK =
-            mVehicle->missionManager->wpMission->uploadIndexData(&wpp,
-                                                                 mFunctionTimeout);
+            mVehicle->missionManager->wpMission->uploadIndexData(&wpp, mFunctionTimeout);
         ACK::getErrorCodeMessage(wpDataACK.ack, __func__);
     }
     // debug
@@ -339,7 +354,8 @@ WayPointInitSettings DroneFlightControlTask::getWaypointInitDefaults(Mission mis
     return fdata;
 }
 
-WayPointSettings DroneFlightControlTask::getWaypointSettings(Waypoint cmd_waypoint, int index)
+WayPointSettings
+DroneFlightControlTask::getWaypointSettings(Waypoint cmd_waypoint, int index)
 {
     // Convert local position cmd to lat/long
     gps_base::Solution pos = convertToGPSPosition(cmd_waypoint);
@@ -387,7 +403,8 @@ power_base::BatteryStatus DroneFlightControlTask::getBatteryStatus() const
     auto djiBattery = mVehicle->broadcast->getBatteryInfo();
 
     power_base::BatteryStatus battery;
-    battery.time = base::Time::fromMilliseconds(mVehicle->broadcast->getTimeStamp().time_ms);
+    battery.time =
+        base::Time::fromMilliseconds(mVehicle->broadcast->getTimeStamp().time_ms);
     battery.current = djiBattery.current;
     battery.voltage = djiBattery.voltage;
     battery.charge = static_cast<float>(djiBattery.percentage) / 100;
@@ -400,9 +417,13 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
     base::samples::RigidBodyState cmd;
     cmd.time = base::Time::fromMilliseconds(mVehicle->broadcast->getTimeStamp().time_ms);
     Telemetry::Quaternion orientation = mVehicle->broadcast->getQuaternion();
-    Eigen::Quaterniond q_bodyned2ned(orientation.q0, orientation.q1, orientation.q2,
-                                     orientation.q3);
-    Eigen::Quaterniond q_ned2nwu = Eigen::Quaterniond(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()));
+    Eigen::Quaterniond q_bodyned2ned(
+        orientation.q0,
+        orientation.q1,
+        orientation.q2,
+        orientation.q3);
+    Eigen::Quaterniond q_ned2nwu =
+        Eigen::Quaterniond(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()));
     Eigen::Quaterniond q_bodynwu2nwu = q_ned2nwu * q_bodyned2ned * q_ned2nwu.conjugate();
     cmd.orientation = q_bodynwu2nwu;
     cmd.velocity.x() = mVehicle->broadcast->getVelocity().x;
@@ -420,13 +441,16 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
     solution.longitude = gpsInfo.longitude * 180 / M_PI;
     solution.altitude = gpsInfo.height;
     // Convert position data from GPS to NWU
-    cmd.position = mGPSSolution.convertToNWU(solution).position;;
+    cmd.position = mGPSSolution.convertToNWU(solution).position;
+    ;
 
     return cmd;
 }
 
-bool DroneFlightControlTask::setUpSubscription(int pkgIndex, int freq,
-                                               std::vector<Telemetry::TopicName> topicList)
+bool DroneFlightControlTask::setUpSubscription(
+    int pkgIndex,
+    int freq,
+    std::vector<Telemetry::TopicName> topicList)
 {
     if (!mVehicle)
     {
@@ -434,8 +458,7 @@ bool DroneFlightControlTask::setUpSubscription(int pkgIndex, int freq,
         return false;
     }
     /*! Telemetry: Verify the subscription*/
-    ACK::ErrorCode subscribeStatus =
-        mVehicle->subscribe->verify(mFunctionTimeout);
+    ACK::ErrorCode subscribeStatus = mVehicle->subscribe->verify(mFunctionTimeout);
     if (ACK::getError(subscribeStatus) != ACK::SUCCESS)
     {
         ACK::getErrorCodeMessage(subscribeStatus, __func__);
@@ -444,7 +467,11 @@ bool DroneFlightControlTask::setUpSubscription(int pkgIndex, int freq,
 
     bool enableTimestamp = false;
     bool pkgStatus = mVehicle->subscribe->initPackageFromTopicList(
-        pkgIndex, topicList.size(), topicList.data(), enableTimestamp, freq);
+        pkgIndex,
+        topicList.size(),
+        topicList.data(),
+        enableTimestamp,
+        freq);
     if (!(pkgStatus))
         return false;
 
@@ -455,7 +482,8 @@ bool DroneFlightControlTask::setUpSubscription(int pkgIndex, int freq,
     {
         ACK::getErrorCodeMessage(subscribeStatus, __func__);
         /*! Cleanup*/
-        ACK::ErrorCode ack = mVehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
+        ACK::ErrorCode ack =
+            mVehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
         if (ACK::getError(ack))
         {
             DERROR("Error unsubscription; please restart the drone/FC to get "
@@ -472,10 +500,21 @@ bool DroneFlightControlTask::teardownSubscription(const int pkgIndex)
     ACK::ErrorCode ack = mVehicle->subscribe->removePackage(pkgIndex, mFunctionTimeout);
     if (ACK::getError(ack))
     {
-        DERROR(
-            "Error unsubscription; please restart the drone/FC to get back "
-            "to a clean state.");
+        DERROR("Error unsubscription; please restart the drone/FC to get back "
+               "to a clean state.");
         return false;
     }
     return true;
+}
+
+bool DroneFlightControlTask::checkControlAvailability()
+{
+    auto control_device =
+        mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
+    /**
+     * 0 - RC
+     * 1 - Mobile app
+     * 2 - Serial
+     */
+    return control_device.deviceStatus == 2;
 }
