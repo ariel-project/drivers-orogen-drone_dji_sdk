@@ -8,8 +8,8 @@
  * which case you do not need this file
  */
 
-#include <base/Eigen.hpp>
 #include <base/Angle.hpp>
+#include <base/Eigen.hpp>
 #include <base/Time.hpp>
 
 namespace drone_dji_sdk
@@ -95,34 +95,30 @@ namespace drone_dji_sdk
         int command;
         int command_parameter;
 
-        bool operator==(Action const &m) const
+        bool operator==(Action const& m) const
         {
-            return (command == m.command &&
-                    command_parameter == m.command_parameter);
+            return (command == m.command && command_parameter == m.command_parameter);
         }
     };
 
     struct Waypoint
     {
-        base::Vector3d position;  /*!< local position cmd (m) */
-        float damping;            /*!< Bend length (effective coordinated turn mode only) */
-        base::Angle yaw;          /*!< Yaw (rad) */
+        base::Vector3d position; /*!< local position cmd (m) */
+        float damping;   /*!< Bend length (effective coordinated turn mode only) */
+        base::Angle yaw; /*!< Yaw (rad) */
         base::Angle gimbal_pitch; /*!< Gimbal pitch */
         TurnMode turn_mode;       /*!< Turn mode <br> */
         int action_time_limit;
         int total_running_times;
         std::vector<Action> actions;
 
-        bool operator==(Waypoint const &m) const
+        bool operator==(Waypoint const& m) const
         {
-            return (position == m.position &&
-                    damping == m.damping &&
-                    yaw.rad == m.yaw.rad &&
-                    gimbal_pitch.rad == m.gimbal_pitch.rad &&
-                    turn_mode == m.turn_mode &&
-                    action_time_limit == m.action_time_limit &&
-                    total_running_times == m.total_running_times &&
-                    actions == m.actions);
+            return (
+                position == m.position && damping == m.damping && yaw.rad == m.yaw.rad &&
+                gimbal_pitch.rad == m.gimbal_pitch.rad && turn_mode == m.turn_mode &&
+                action_time_limit == m.action_time_limit &&
+                total_running_times == m.total_running_times && actions == m.actions);
         }
     };
 
@@ -141,22 +137,44 @@ namespace drone_dji_sdk
         GimbalPitch gimbal_pitch;
         std::vector<Waypoint> waypoints;
 
-        bool operator==(Mission const &m) const
+        bool operator==(Mission const& m) const
         {
 
-            return (timestamp == m.timestamp &&
-                    max_velocity == m.max_velocity &&
-                    idle_velocity == m.idle_velocity &&
-                    position == m.position &&
-                    finish_action == m.finish_action &&
-                    executive_times == m.executive_times &&
-                    yaw_mode == m.yaw_mode &&
-                    trace_mode == m.trace_mode &&
-                    rc_lost_action == m.rc_lost_action &&
-                    gimbal_pitch == m.gimbal_pitch &&
-                    waypoints == m.waypoints);
+            return (
+                timestamp == m.timestamp && max_velocity == m.max_velocity &&
+                idle_velocity == m.idle_velocity && position == m.position &&
+                finish_action == m.finish_action &&
+                executive_times == m.executive_times && yaw_mode == m.yaw_mode &&
+                trace_mode == m.trace_mode && rc_lost_action == m.rc_lost_action &&
+                gimbal_pitch == m.gimbal_pitch && waypoints == m.waypoints);
         }
     };
-}
+
+    enum AuthorityRequestResult
+    {
+        Success,
+        Failure
+    };
+
+    enum ControlDevice
+    {
+        RemoteController,
+        MobileApp,
+        SDK
+    };
+
+    enum DeviceFlightStatus
+    {
+        Close,
+        Opened
+    };
+
+    struct Status
+    {
+        AuthorityRequestResult authority_status;
+        ControlDevice control_device;
+        DeviceFlightStatus device_flight_status;
+    };
+} // namespace drone_dji_sdk
 
 #endif
