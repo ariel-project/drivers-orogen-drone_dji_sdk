@@ -18,7 +18,8 @@ namespace drone_dji_sdk
     {
         TAKEOFF_ACTIVATE,
         LANDING_ACTIVATE,
-        GOTO_ACTIVATE,
+        POS_CONTROL_ACTIVATE,
+        VEL_CONTROL_ACTIVATE,
         MISSION_ACTIVATE
     };
 
@@ -87,7 +88,9 @@ namespace drone_dji_sdk
     {
         base::Time time;
         base::Vector3d position;
-        base::Angle heading;
+        base::Vector3d velocity;
+        base::Angle yaw_rate;
+        base::Angle yaw;
     };
 
     struct Action
