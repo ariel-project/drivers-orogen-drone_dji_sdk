@@ -452,7 +452,7 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
 {
     // convert everything do NWU (Rock convention)
     base::samples::RigidBodyState cmd;
-    cmd.time = base::Time::fromMilliseconds(mVehicle->broadcast->getTimeStamp().time_ms);
+    cmd.time = base::Time::now();
     Telemetry::Quaternion orientation = mVehicle->broadcast->getQuaternion();
     Eigen::Quaterniond q_bodyned2ned(
         orientation.q0,
