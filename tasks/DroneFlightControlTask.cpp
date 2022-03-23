@@ -82,8 +82,8 @@ void DroneFlightControlTask::updateHook()
     _status.write(mStatus);
 
     // cmd input
-    drone_dji_sdk::CommandAction cmd_input;
-    if (_cmd_input.read(cmd_input) == RTT::NoData)
+    drone_dji_sdk::CommandAction cmd_action;
+    if (_cmd_action.read(cmd_action) == RTT::NoData)
     {
         return;
     }
@@ -110,18 +110,18 @@ void DroneFlightControlTask::updateHook()
         state(status);
 
     if (djiStatusFlight != VehicleStatus::FlightStatus::IN_AIR &&
-        cmd_input != TAKEOFF_ACTIVATE)
+        cmd_action != TAKEOFF_ACTIVATE)
     {
         return;
     }
 
-    switch (cmd_input)
+    switch (cmd_action)
     {
         case TAKEOFF_ACTIVATE:
         {
             // setpoint input
             VehicleSetpoint setpoint;
-            if (_cmd_pos.read(setpoint) != RTT::NewData)
+            if (_cmd_setpoint.read(setpoint) != RTT::NewData)
                 return;
             return takeoff(setpoint);
         }
@@ -129,7 +129,7 @@ void DroneFlightControlTask::updateHook()
         {
             // setpoint input
             VehicleSetpoint setpoint;
-            if (_cmd_pos.read(setpoint) != RTT::NewData)
+            if (_cmd_setpoint.read(setpoint) != RTT::NewData)
                 return;
             return land(setpoint);
         }
@@ -137,7 +137,7 @@ void DroneFlightControlTask::updateHook()
         {
             // setpoint input
             VehicleSetpoint setpoint;
-            if (_cmd_pos.read(setpoint) != RTT::NewData)
+            if (_cmd_setpoint.read(setpoint) != RTT::NewData)
                 return;
             return posControl(setpoint);
         }
@@ -145,7 +145,7 @@ void DroneFlightControlTask::updateHook()
         {
             // setpoint input
             VehicleSetpoint setpoint;
-            if (_cmd_pos.read(setpoint) != RTT::NewData)
+            if (_cmd_setpoint.read(setpoint) != RTT::NewData)
                 return;
             return velControl(setpoint);
         }
