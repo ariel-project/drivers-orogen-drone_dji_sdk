@@ -30,7 +30,7 @@ task_context "DroneFlightControlTask" do
     output_port "cmd_out_position", "/std/vector</base/Vector3d>"
     output_port "status", "/drone_dji_sdk/Status"
 
-    runtime_states :DJI_STOPPED, :DJI_ON_GROUND, :DJI_IN_AIR, :CONTROL_LOST
+    runtime_states :TELEMETRY, :CONTROLLING, :CONTROL_LOST
 
     # Deployed with a 10ms period by default
     periodic 0.01

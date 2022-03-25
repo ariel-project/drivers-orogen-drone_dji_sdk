@@ -3,22 +3,25 @@
 #ifndef DRONE_DJI_SDK_DRONEFLIGHTCONTROLTASK_TASK_HPP
 #define DRONE_DJI_SDK_DRONEFLIGHTCONTROLTASK_TASK_HPP
 
-#include "drone_dji_sdk/DroneFlightControlTaskBase.hpp"
-#include "drone_dji_sdkTypes.hpp"
-#include <gps_base/UTMConverter.hpp>
-#include <gps_base/BaseTypes.hpp>
+#include "djiosdk/dji_status.hpp"
 #include "djiosdk/dji_telemetry.hpp"
 #include "djiosdk/dji_vehicle.hpp"
-#include "djiosdk/dji_status.hpp"
+#include "drone_dji_sdk/DroneFlightControlTaskBase.hpp"
+#include "drone_dji_sdkTypes.hpp"
+#include <gps_base/BaseTypes.hpp>
+#include <gps_base/UTMConverter.hpp>
 
 namespace drone_dji_sdk
 {
 
     /*! \class DroneFlightControlTask
-     * \brief The task context provides and requires services. It uses an ExecutionEngine to perform its functions.
-     * Essential interfaces are operations, data flow ports and properties. These interfaces have been defined using the oroGen specification.
-     * In order to modify the interfaces you should (re)use oroGen and rely on the associated workflow.
-     * 
+     * \brief The task context provides and requires services. It uses an ExecutionEngine
+     to perform its functions.
+     * Essential interfaces are operations, data flow ports and properties. These
+     interfaces have been defined using the oroGen specification.
+     * In order to modify the interfaces you should (re)use oroGen and rely on the
+     associated workflow.
+     *
      * \details
      * The name of a TaskContext is primarily defined via:
      \verbatim
@@ -26,19 +29,22 @@ namespace drone_dji_sdk
          task('custom_task_name','drone_dji_sdk::DroneFlightControlTask')
      end
      \endverbatim
-     *  It can be dynamically adapted when the deployment is called with a prefix argument.
+     *  It can be dynamically adapted when the deployment is called with a prefix
+     argument.
      */
     class DroneFlightControlTask : public DroneFlightControlTaskBase
     {
         friend class DroneFlightControlTaskBase;
 
-    protected:
-    public:
+      protected:
+      public:
         /** TaskContext constructor for DroneFlightControlTask
-         * \param name Name of the task. This name needs to be unique to make it identifiable via nameservices.
-         * \param initial_state The initial TaskState of the TaskContext. Default is Stopped state.
+         * \param name Name of the task. This name needs to be unique to make it
+         * identifiable via nameservices. \param initial_state The initial TaskState of
+         * the TaskContext. Default is Stopped state.
          */
-        DroneFlightControlTask(std::string const &name = "drone_dji_sdk::DroneFlightControlTask");
+        DroneFlightControlTask(
+            std::string const& name = "drone_dji_sdk::DroneFlightControlTask");
 
         /** Default deconstructor of DroneFlightControlTask
          */
@@ -102,8 +108,7 @@ namespace drone_dji_sdk
          */
         void cleanupHook();
 
-    private:
-
+      private:
         uint32_t mFunctionTimeout;
         int mStatusFreqInHz;
         double mPositionThreshold;
@@ -117,8 +122,10 @@ namespace drone_dji_sdk
         bool initVehicle();
         bool missionInitSettings(Mission wypMission);
         bool checkTelemetrySubscription();
-        bool setUpSubscription(int pkgIndex, int freq,
-                               std::vector<Telemetry::TopicName> topicList);
+        bool setUpSubscription(
+            int pkgIndex,
+            int freq,
+            std::vector<Telemetry::TopicName> topicList);
         bool teardownSubscription(const int pkgIndex);
 
         void posControl(VehicleSetpoint setpoint);
@@ -126,6 +133,9 @@ namespace drone_dji_sdk
         void land(VehicleSetpoint setpoint);
         void takeoff(VehicleSetpoint setpoint);
         void mission(Mission wypMission);
+
+        States runtimeStatesTransition();
+        void applyTransition(States next_state);
 
         // Helper Functions
         bool checkDistanceThreshold(drone_dji_sdk::VehicleSetpoint pos);
@@ -137,10 +147,10 @@ namespace drone_dji_sdk
 
         /**
          * Check if control over the drone if available for the SDK to obtain.
-         * 
+         *
          * @return whether the SDK can obtain control of the drone.
          */
         bool checkControlAvailability();
     };
-}
+} // namespace drone_dji_sdk
 #endif

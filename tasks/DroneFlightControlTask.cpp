@@ -51,20 +51,83 @@ bool DroneFlightControlTask::startHook()
     return true;
 }
 
-typedef DroneFlightControlTask::States TaskState;
-static TaskState djiStatusFlightToTaskState(uint8_t status)
+DroneFlightControlTask::States DroneFlightControlTask::runtimeStatesTransition()
 {
-    switch (status)
+    DroneFlightControlTask::States current_state = state();
+    switch (current_state)
     {
-        case DJI::OSDK::VehicleStatus::FlightStatus::STOPED:
-            return TaskState::DJI_STOPPED;
-        case DJI::OSDK::VehicleStatus::FlightStatus::ON_GROUND:
-            return TaskState::DJI_ON_GROUND;
-        case DJI::OSDK::VehicleStatus::FlightStatus::IN_AIR:
-            return TaskState::DJI_IN_AIR;
+        case RUNNING:
+        {
+            return TELEMETRY;
+        }
+        case TELEMETRY:
+        {
+            drone_dji_sdk::CommandAction cmd_action;
+            if (_cmd_action.read(cmd_action) != RTT::NoData)
+            {
+                return CONTROLLING;
+            }
+            else
+            {
+                return TELEMETRY;
+            }
+        }
+        case CONTROLLING:
+        {
+            bool is_controllable = checkControlAvailability();
+            if (is_controllable)
+            {
+                return CONTROLLING;
+            }
+            else
+            {
+                return CONTROL_LOST;
+            }
+        }
+        case CONTROL_LOST:
+        {
+            drone_dji_sdk::CommandAction cmd_action;
+            if (_cmd_action.read(cmd_action) != RTT::NoData)
+            {
+                return CONTROL_LOST;
+            }
+            else
+            {
+                return TELEMETRY;
+            }
+        }
+        default:
+            return current_state;
     }
-    // Never reached
-    throw std::invalid_argument("invalid controller state");
+}
+
+void DroneFlightControlTask::applyTransition(DroneFlightControlTask::States next_state)
+{
+    switch (next_state)
+    {
+        case TELEMETRY:
+        {
+            state(TELEMETRY);
+            return;
+        }
+        case CONTROLLING:
+        {
+            state(CONTROLLING);
+            mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
+            ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
+            return;
+        }
+        case CONTROL_LOST:
+        {
+            state(CONTROL_LOST);
+            return;
+        }
+        default:
+        {
+            state(next_state);
+            return;
+        }
+    }
 }
 
 void DroneFlightControlTask::updateHook()
@@ -81,40 +144,22 @@ void DroneFlightControlTask::updateHook()
         static_cast<DeviceFlightStatus>(control_device.flightStatus);
     _status.write(mStatus);
 
+    States new_state = runtimeStatesTransition();
+    if (new_state != state())
+    {
+        applyTransition(new_state);
+    }
+
     // cmd input
     drone_dji_sdk::CommandAction cmd_action;
     if (_cmd_action.read(cmd_action) == RTT::NoData)
     {
         return;
     }
-    else if (mStatus.authority_status == AuthorityRequestResult::Failure)
-    {
-        mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
-        ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
-    }
-
-    if (!checkControlAvailability())
-    {
-        if (state() != CONTROL_LOST)
-        {
-            state(CONTROL_LOST);
-        }
-        return;
-    }
-    else 
-    {
-        if (state() == CONTROL_LOST)
-        {
-            state(RUNNING);
-        }
-    }
 
     // Check status
     auto djiStatusFlight =
         mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
-    DroneFlightControlTask::States status = djiStatusFlightToTaskState(djiStatusFlight);
-    if (state() != status)
-        state(status);
 
     if (djiStatusFlight != VehicleStatus::FlightStatus::IN_AIR &&
         cmd_action != TAKEOFF_ACTIVATE)
