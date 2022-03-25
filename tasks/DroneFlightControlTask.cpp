@@ -82,8 +82,8 @@ void DroneFlightControlTask::updateHook()
     _status.write(mStatus);
 
     // cmd input
-    drone_dji_sdk::CommandAction cmd_input;
-    if (_cmd_input.read(cmd_input) == RTT::NoData)
+    drone_dji_sdk::CommandAction cmd_action;
+    if (_cmd_action.read(cmd_action) == RTT::NoData)
     {
         return;
     }
@@ -110,18 +110,18 @@ void DroneFlightControlTask::updateHook()
         state(status);
 
     if (djiStatusFlight != VehicleStatus::FlightStatus::IN_AIR &&
-        cmd_input != TAKEOFF_ACTIVATE)
+        cmd_action != TAKEOFF_ACTIVATE)
     {
         return;
     }
 
-    switch (cmd_input)
+    switch (cmd_action)
     {
         case TAKEOFF_ACTIVATE:
         {
             // setpoint input
             VehicleSetpoint setpoint;
-            if (_cmd_pos.read(setpoint) != RTT::NewData)
+            if (_cmd_setpoint.read(setpoint) != RTT::NewData)
                 return;
             return takeoff(setpoint);
         }
@@ -129,17 +129,25 @@ void DroneFlightControlTask::updateHook()
         {
             // setpoint input
             VehicleSetpoint setpoint;
-            if (_cmd_pos.read(setpoint) != RTT::NewData)
+            if (_cmd_setpoint.read(setpoint) != RTT::NewData)
                 return;
             return land(setpoint);
         }
-        case GOTO_ACTIVATE:
+        case POS_CONTROL_ACTIVATE:
         {
             // setpoint input
             VehicleSetpoint setpoint;
-            if (_cmd_pos.read(setpoint) != RTT::NewData)
+            if (_cmd_setpoint.read(setpoint) != RTT::NewData)
                 return;
-            return goTo(setpoint);
+            return posControl(setpoint);
+        }
+        case VEL_CONTROL_ACTIVATE:
+        {
+            // setpoint input
+            VehicleSetpoint setpoint;
+            if (_cmd_setpoint.read(setpoint) != RTT::NewData)
+                return;
+            return velControl(setpoint);
         }
         case MISSION_ACTIVATE:
         {
@@ -258,7 +266,7 @@ void DroneFlightControlTask::takeoff(VehicleSetpoint setpoint)
 
     if (djiStatusFlight == VehicleStatus::FlightStatus::IN_AIR)
     {
-        goTo(setpoint);
+        posControl(setpoint);
         return;
     }
 
@@ -278,7 +286,7 @@ void DroneFlightControlTask::land(VehicleSetpoint setpoint)
 
     if (!checkDistanceThreshold(setpoint))
     {
-        goTo(setpoint);
+        posControl(setpoint);
         return;
     }
     mVehicle->control->land(mFunctionTimeout);
@@ -294,14 +302,14 @@ bool DroneFlightControlTask::checkDistanceThreshold(VehicleSetpoint pos)
     return (dist.norm() < mPositionThreshold);
 }
 
-void DroneFlightControlTask::goTo(VehicleSetpoint setpoint)
+void DroneFlightControlTask::posControl(VehicleSetpoint setpoint)
 {
     // get the vector between aircraft and target point.
     base::Vector3d position = getRigidBodyState().position;
     // get offset
     base::Vector3d offset = (setpoint.position - position);
     // Convert to deg!
-    float yawDesiredInDeg = (setpoint.heading.rad) * 180 / M_PI;
+    float yawDesiredInDeg = (setpoint.yaw.rad) * 180 / M_PI;
 
     // Convert to NEU
     float32_t xCmd = static_cast<float>(offset[0]);
@@ -309,6 +317,23 @@ void DroneFlightControlTask::goTo(VehicleSetpoint setpoint)
     float32_t zCmd = static_cast<float>(setpoint.position[2]);
 
     mVehicle->control->positionAndYawCtrl(xCmd, yCmd, zCmd, yawDesiredInDeg);
+}
+
+void DroneFlightControlTask::velControl(VehicleSetpoint setpoint)
+{
+    // get the vector between aircraft and target point.
+    base::Vector3d velocity = getRigidBodyState().velocity;
+    // get offset
+    base::Vector3d offset = (setpoint.velocity - velocity);
+    // Convert to deg!
+    float yawRateDesiredInDeg = (setpoint.yaw_rate.rad) * 180 / M_PI;
+
+    // Convert to NEU
+    float32_t xCmd = static_cast<float>(offset[0]);
+    float32_t yCmd = -static_cast<float>(offset[1]);
+    float32_t zCmd = static_cast<float>(setpoint.velocity[2]);
+
+    mVehicle->control->velocityAndYawRateCtrl(xCmd, yCmd, zCmd, yawRateDesiredInDeg);
 }
 
 void DroneFlightControlTask::mission(Mission wypMission)
@@ -427,7 +452,7 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
 {
     // convert everything do NWU (Rock convention)
     base::samples::RigidBodyState cmd;
-    cmd.time = base::Time::fromMilliseconds(mVehicle->broadcast->getTimeStamp().time_ms);
+    cmd.time = base::Time::now();
     Telemetry::Quaternion orientation = mVehicle->broadcast->getQuaternion();
     Eigen::Quaterniond q_bodyned2ned(
         orientation.q0,

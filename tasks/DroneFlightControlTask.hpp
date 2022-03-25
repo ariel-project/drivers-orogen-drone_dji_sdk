@@ -121,7 +121,8 @@ namespace drone_dji_sdk
                                std::vector<Telemetry::TopicName> topicList);
         bool teardownSubscription(const int pkgIndex);
 
-        void goTo(VehicleSetpoint setpoint);
+        void posControl(VehicleSetpoint setpoint);
+        void velControl(VehicleSetpoint setpoint);
         void land(VehicleSetpoint setpoint);
         void takeoff(VehicleSetpoint setpoint);
         void mission(Mission wypMission);
