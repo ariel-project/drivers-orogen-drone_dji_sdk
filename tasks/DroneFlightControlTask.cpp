@@ -103,23 +103,26 @@ DroneFlightControlTask::runtimeStatesTransition(Telemetry::SDKInfo control_statu
 }
 
 void DroneFlightControlTask::applyTransition(
-    DroneFlightControlTask::States const& next_state,
-    Telemetry::SDKInfo const& control_device)
+    DroneFlightControlTask::States const& next_state)
 {
     switch (next_state)
     {
         case CONTROLLING:
         {
             Time timeout = Time::now() + Time::fromSeconds((double)(mFunctionTimeout));
-            while (!canTakeControl(control_device) && Time::now() < timeout)
+            Telemetry::SDKInfo control_device;
+            while (Time::now() < timeout)
             {
                 mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
                 ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
+                control_device =
+                    mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
+                if (canTakeControl(control_device))
+                {
+                    return;
+                }
             }
-            if (!canTakeControl(control_device))
-            {
-                state(CONTROL_LOST);
-            }
+            state(CONTROL_LOST);
             return;
         }
         default:
@@ -140,7 +143,7 @@ void DroneFlightControlTask::updateHook()
         mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
 
     States new_state = runtimeStatesTransition(control_device);
-    applyTransition(new_state, control_device);
+    applyTransition(new_state);
 
     if (state() != new_state)
     {
