@@ -101,6 +101,13 @@ void DroneFlightControlTask::updateHook()
         }
         return;
     }
+    else 
+    {
+        if (state() == CONTROL_LOST)
+        {
+            state(RUNNING);
+        }
+    }
 
     // Check status
     auto djiStatusFlight =
