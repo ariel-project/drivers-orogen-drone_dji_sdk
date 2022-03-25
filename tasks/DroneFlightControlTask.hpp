@@ -134,7 +134,7 @@ namespace drone_dji_sdk
         void takeoff(VehicleSetpoint setpoint);
         void mission(Mission wypMission);
 
-        States runtimeStatesTransition();
+        States runtimeStatesTransition(DJI::OSDK::Telemetry::SDKInfo control_device);
         void applyTransition(States next_state);
 
         // Helper Functions
@@ -146,11 +146,11 @@ namespace drone_dji_sdk
         WayPointSettings getWaypointSettings(Waypoint cmd_waypoint, int index);
 
         /**
-         * Check if control over the drone if available for the SDK to obtain.
+         * Check if the SDK can take the drone control authority.
          *
          * @return whether the SDK can obtain control of the drone.
          */
-        bool checkControlAvailability();
+        bool canTakeControl(DJI::OSDK::Telemetry::SDKInfo control_device);
     };
 } // namespace drone_dji_sdk
 #endif
