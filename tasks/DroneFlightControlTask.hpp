@@ -135,7 +135,9 @@ namespace drone_dji_sdk
         void mission(Mission wypMission);
 
         States runtimeStatesTransition(DJI::OSDK::Telemetry::SDKInfo control_device);
-        void applyTransition(States next_state);
+        void applyTransition(
+            States const& next_state,
+            DJI::OSDK::Telemetry::SDKInfo const& control_device);
 
         // Helper Functions
         bool checkDistanceThreshold(drone_dji_sdk::VehicleSetpoint pos);
@@ -150,7 +152,7 @@ namespace drone_dji_sdk
          *
          * @return whether the SDK can obtain control of the drone.
          */
-        bool canTakeControl(DJI::OSDK::Telemetry::SDKInfo control_device);
+        bool canTakeControl(DJI::OSDK::Telemetry::SDKInfo const& control_device);
     };
 } // namespace drone_dji_sdk
 #endif

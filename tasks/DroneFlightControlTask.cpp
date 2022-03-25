@@ -5,6 +5,7 @@
 using namespace DJI::OSDK;
 using namespace drone_dji_sdk;
 using namespace VehicleStatus;
+using namespace base;
 
 DroneFlightControlTask::DroneFlightControlTask(std::string const& name)
     : DroneFlightControlTaskBase(name)
@@ -101,16 +102,23 @@ DroneFlightControlTask::runtimeStatesTransition(Telemetry::SDKInfo control_statu
     }
 }
 
-void DroneFlightControlTask::applyTransition(DroneFlightControlTask::States next_state)
+void DroneFlightControlTask::applyTransition(
+    DroneFlightControlTask::States const& next_state,
+    Telemetry::SDKInfo const& control_device)
 {
     switch (next_state)
     {
         case CONTROLLING:
         {
-            if (ACK::getError(mAuthorityStatus) == AuthorityRequestResult::Failure)
+            Time timeout = Time::now() + Time::fromSeconds((double)(mFunctionTimeout));
+            while (!canTakeControl(control_device) && Time::now() < timeout)
             {
                 mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
                 ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
+            }
+            if (!canTakeControl(control_device))
+            {
+                state(CONTROL_LOST);
             }
             return;
         }
@@ -132,7 +140,7 @@ void DroneFlightControlTask::updateHook()
         mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
 
     States new_state = runtimeStatesTransition(control_device);
-    applyTransition(new_state);
+    applyTransition(new_state, control_device);
 
     if (state() != new_state)
     {
@@ -590,16 +598,14 @@ bool DroneFlightControlTask::teardownSubscription(const int pkgIndex)
     return true;
 }
 
-bool DroneFlightControlTask::canTakeControl(Telemetry::SDKInfo control_device)
+bool DroneFlightControlTask::canTakeControl(Telemetry::SDKInfo const& control_device)
 {
-    /** This check whether the SDK is controlling the drone or if the control device 
+    /** This check whether the SDK is controlling the drone or if the control device
      * changes to the Remote Controller.
      *
      * 0 - RC
      * 1 - Mobile app
      * 2 - Serial
      */
-    return control_device.deviceStatus == 2 ||
-           (control_device.deviceStatus == 0 &&
-            control_device.deviceStatus == mStatus.control_device);
+    return control_device.deviceStatus == 2;
 }
