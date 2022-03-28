@@ -109,9 +109,10 @@ namespace drone_dji_sdk
         void cleanupHook();
 
       private:
-        int64_t mFunctionTimeout;
-        int mStatusFreqInHz;
-        double mPositionThreshold;
+        int64_t mFunctionTimeout = 1;
+        int mStatusFreqInHz = 10;
+        base::Time mPrevDataTimestamp;
+        double mPositionThreshold = 1;
         Vehicle::ActivateData mActivateData;
         gps_base::UTMConverter mGPSSolution;
         std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;

@@ -31,8 +31,9 @@ task_context "DroneFlightControlTask" do
 
     runtime_states :TELEMETRY, :CONTROLLING, :CONTROL_LOST
 
-    # Deployed with a 10ms period by default
-    periodic 0.01
+    # Deploy with a period of 5ms to reduce delay from telemetry samples, which are
+    # updated every 20ms.
+    periodic 0.005
 end
 
 task_context "DroneMissionGeneratorTask" do
