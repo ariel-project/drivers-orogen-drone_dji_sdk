@@ -5,6 +5,7 @@
 using namespace DJI::OSDK;
 using namespace drone_dji_sdk;
 using namespace VehicleStatus;
+using namespace base;
 
 DroneFlightControlTask::DroneFlightControlTask(std::string const& name)
     : DroneFlightControlTaskBase(name)
@@ -45,26 +46,85 @@ bool DroneFlightControlTask::startHook()
         return false;
 
     mLastMission = Mission();
-
-    mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
-    ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
+    state(TELEMETRY);
     return true;
 }
 
-typedef DroneFlightControlTask::States TaskState;
-static TaskState djiStatusFlightToTaskState(uint8_t status)
+DroneFlightControlTask::States
+DroneFlightControlTask::runtimeStatesTransition(Telemetry::SDKInfo control_status)
 {
-    switch (status)
+    DroneFlightControlTask::States current_state = state();
+    switch (current_state)
     {
-        case DJI::OSDK::VehicleStatus::FlightStatus::STOPED:
-            return TaskState::DJI_STOPPED;
-        case DJI::OSDK::VehicleStatus::FlightStatus::ON_GROUND:
-            return TaskState::DJI_ON_GROUND;
-        case DJI::OSDK::VehicleStatus::FlightStatus::IN_AIR:
-            return TaskState::DJI_IN_AIR;
+        case TELEMETRY:
+        {
+            if (_cmd_action.connected())
+            {
+                return CONTROLLING;
+            }
+            else
+            {
+                return TELEMETRY;
+            }
+        }
+        case CONTROLLING:
+        {
+            bool can_take_ctrl = canTakeControl(control_status);
+            if (!_cmd_action.connected())
+            {
+                return TELEMETRY;
+            }
+            else if (can_take_ctrl)
+            {
+                return CONTROLLING;
+            }
+            else
+            {
+                return CONTROL_LOST;
+            }
+        }
+        case CONTROL_LOST:
+        {
+            if (_cmd_action.connected())
+            {
+                return CONTROL_LOST;
+            }
+            else
+            {
+                return TELEMETRY;
+            }
+        }
+        default:
+            return current_state;
     }
-    // Never reached
-    throw std::invalid_argument("invalid controller state");
+}
+
+void DroneFlightControlTask::applyTransition(
+    DroneFlightControlTask::States const& next_state)
+{
+    if (next_state != CONTROLLING)
+    {
+        return;
+    }
+
+    Time deadline = Time::now() + Time::fromSeconds(mFunctionTimeout);
+    Telemetry::SDKInfo control_device;
+    control_device = mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
+    auto now = Time::now();
+    /** Try to obtain control authority from the Remote Controller. The timeout loop
+     * is needed because there is no guarantee that a single try is enough, and the
+     * feedback that this was successfull might be late.
+     */
+    while (now < deadline && !canTakeControl(control_device))
+    {
+        auto timeout = (deadline - now).toSeconds();
+        mAuthorityStatus = mVehicle->obtainCtrlAuthority(timeout);
+        ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
+        control_device = mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
+        now = Time::now();
+    }
+    state(CONTROL_LOST);
+    return;
 }
 
 void DroneFlightControlTask::updateHook()
@@ -76,6 +136,14 @@ void DroneFlightControlTask::updateHook()
 
     auto control_device =
         mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
+
+    States new_state = runtimeStatesTransition(control_device);
+    if (state() != new_state)
+    {
+        applyTransition(new_state);
+        state(new_state);
+    }
+
     mStatus.control_device = static_cast<ControlDevice>(control_device.deviceStatus);
     mStatus.device_flight_status =
         static_cast<DeviceFlightStatus>(control_device.flightStatus);
@@ -83,31 +151,14 @@ void DroneFlightControlTask::updateHook()
 
     // cmd input
     drone_dji_sdk::CommandAction cmd_action;
-    if (_cmd_action.read(cmd_action) == RTT::NoData)
+    if (_cmd_action.read(cmd_action) == RTT::NoData || state() == CONTROL_LOST)
     {
-        return;
-    }
-    else if (mStatus.authority_status == AuthorityRequestResult::Failure)
-    {
-        mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
-        ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
-    }
-
-    if (!checkControlAvailability())
-    {
-        if (state() != CONTROL_LOST)
-        {
-            state(CONTROL_LOST);
-        }
         return;
     }
 
     // Check status
     auto djiStatusFlight =
         mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
-    DroneFlightControlTask::States status = djiStatusFlightToTaskState(djiStatusFlight);
-    if (state() != status)
-        state(status);
 
     if (djiStatusFlight != VehicleStatus::FlightStatus::IN_AIR &&
         cmd_action != TAKEOFF_ACTIVATE)
@@ -544,11 +595,11 @@ bool DroneFlightControlTask::teardownSubscription(const int pkgIndex)
     return true;
 }
 
-bool DroneFlightControlTask::checkControlAvailability()
+bool DroneFlightControlTask::canTakeControl(Telemetry::SDKInfo const& control_device)
 {
-    auto control_device =
-        mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
-    /**
+    /** This check whether the SDK is controlling the drone or if the control device
+     * changes to the Remote Controller.
+     *
      * 0 - RC
      * 1 - Mobile app
      * 2 - Serial
