@@ -109,7 +109,7 @@ namespace drone_dji_sdk
         void cleanupHook();
 
       private:
-        uint32_t mFunctionTimeout;
+        int64_t mFunctionTimeout;
         int mStatusFreqInHz;
         double mPositionThreshold;
         Vehicle::ActivateData mActivateData;

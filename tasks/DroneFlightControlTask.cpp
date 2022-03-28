@@ -46,6 +46,7 @@ bool DroneFlightControlTask::startHook()
         return false;
 
     mLastMission = Mission();
+    state(TELEMETRY);
     return true;
 }
 
@@ -55,10 +56,6 @@ DroneFlightControlTask::runtimeStatesTransition(Telemetry::SDKInfo control_statu
     DroneFlightControlTask::States current_state = state();
     switch (current_state)
     {
-        case RUNNING:
-        {
-            return TELEMETRY;
-        }
         case TELEMETRY:
         {
             if (_cmd_action.connected())
@@ -73,13 +70,13 @@ DroneFlightControlTask::runtimeStatesTransition(Telemetry::SDKInfo control_statu
         case CONTROLLING:
         {
             bool can_take_ctrl = canTakeControl(control_status);
-            if (can_take_ctrl)
-            {
-                return CONTROLLING;
-            }
-            else if (!_cmd_action.connected())
+            if (!_cmd_action.connected())
             {
                 return TELEMETRY;
+            }
+            else if (can_take_ctrl)
+            {
+                return CONTROLLING;
             }
             else
             {
@@ -105,31 +102,29 @@ DroneFlightControlTask::runtimeStatesTransition(Telemetry::SDKInfo control_statu
 void DroneFlightControlTask::applyTransition(
     DroneFlightControlTask::States const& next_state)
 {
-    switch (next_state)
+    if (next_state != CONTROLLING)
     {
-        case CONTROLLING:
-        {
-            Time timeout = Time::now() + Time::fromSeconds((double)(mFunctionTimeout));
-            Telemetry::SDKInfo control_device;
-            while (Time::now() < timeout)
-            {
-                mAuthorityStatus = mVehicle->obtainCtrlAuthority(mFunctionTimeout);
-                ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
-                control_device =
-                    mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
-                if (canTakeControl(control_device))
-                {
-                    return;
-                }
-            }
-            state(CONTROL_LOST);
-            return;
-        }
-        default:
-        {
-            return;
-        }
+        return;
     }
+
+    Time deadline = Time::now() + Time::fromSeconds(mFunctionTimeout);
+    Telemetry::SDKInfo control_device;
+    control_device = mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
+    auto now = Time::now();
+    /** Try to obtain control authority from the Remote Controller. The timeout loop
+     * is needed because there is no guarantee that a single try is enough, and the
+     * feedback that this was successfull might be late.
+     */
+    while (now < deadline && !canTakeControl(control_device))
+    {
+        auto timeout = (deadline - now).toSeconds();
+        mAuthorityStatus = mVehicle->obtainCtrlAuthority(timeout);
+        ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
+        control_device = mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
+        now = Time::now();
+    }
+    state(CONTROL_LOST);
+    return;
 }
 
 void DroneFlightControlTask::updateHook()
@@ -143,10 +138,9 @@ void DroneFlightControlTask::updateHook()
         mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
 
     States new_state = runtimeStatesTransition(control_device);
-    applyTransition(new_state);
-
     if (state() != new_state)
     {
+        applyTransition(new_state);
         state(new_state);
     }
 
