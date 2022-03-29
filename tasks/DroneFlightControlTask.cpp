@@ -22,11 +22,6 @@ bool DroneFlightControlTask::configureHook()
 {
     if (!DroneFlightControlTaskBase::configureHook())
         return false;
-
-    // Init class members
-    mFunctionTimeout = 1; // second
-    mStatusFreqInHz = 10; // Hz
-
     // Configure GPS stuffs
     mGPSSolution.setParameters(_utm_parameters.get());
     // Get pre land distance threshold
@@ -129,11 +124,16 @@ void DroneFlightControlTask::applyTransition(
 
 void DroneFlightControlTask::updateHook()
 {
-    _pose_samples.write(getRigidBodyState());
-    _battery.write(getBatteryStatus());
+    Time timestamp = Time::fromMilliseconds(mVehicle->broadcast->getTimeStamp().time_ms);
+    if (timestamp != mPrevDataTimestamp)
+    {
+        _pose_samples.write(getRigidBodyState());
+        _battery.write(getBatteryStatus());
+    }
+    mPrevDataTimestamp = timestamp;
+
     mStatus.authority_status =
         static_cast<AuthorityRequestResult>(ACK::getError(mAuthorityStatus));
-
     auto control_device =
         mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
 
