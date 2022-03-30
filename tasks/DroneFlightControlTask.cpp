@@ -360,7 +360,7 @@ void DroneFlightControlTask::posControl(VehicleSetpoint setpoint)
     // get offset
     base::Vector3d offset = (setpoint.position - position);
     // Convert to deg!
-    float yawDesiredInDeg = (setpoint.yaw.rad) * 180 / M_PI;
+    float yawDesiredInDeg = -(setpoint.yaw.rad) * 180 / M_PI;
 
     // Convert to NEU
     float32_t xCmd = static_cast<float>(offset[0]);
@@ -377,7 +377,7 @@ void DroneFlightControlTask::velControl(VehicleSetpoint setpoint)
     // get offset
     base::Vector3d offset = (setpoint.velocity - velocity);
     // Convert to deg!
-    float yawRateDesiredInDeg = (setpoint.yaw_rate.rad) * 180 / M_PI;
+    float yawRateDesiredInDeg = -(setpoint.yaw_rate.rad) * 180 / M_PI;
 
     // Convert to NEU
     float32_t xCmd = static_cast<float>(offset[0]);
