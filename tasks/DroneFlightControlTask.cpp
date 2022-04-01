@@ -516,7 +516,7 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
     cmd.orientation = q_bodynwu2nwu;
     cmd.velocity.x() = mVehicle->broadcast->getVelocity().x;
     cmd.velocity.y() = -mVehicle->broadcast->getVelocity().y;
-    cmd.velocity.z() = -mVehicle->broadcast->getVelocity().z;
+    cmd.velocity.z() = mVehicle->broadcast->getVelocity().z;
     cmd.angular_velocity.x() = mVehicle->broadcast->getAngularRate().x;
     cmd.angular_velocity.y() = -mVehicle->broadcast->getAngularRate().y;
     cmd.angular_velocity.z() = -mVehicle->broadcast->getAngularRate().z;
@@ -530,7 +530,6 @@ base::samples::RigidBodyState DroneFlightControlTask::getRigidBodyState() const
     solution.altitude = gpsInfo.height;
     // Convert position data from GPS to NWU
     cmd.position = mGPSSolution.convertToNWU(solution).position;
-    ;
 
     return cmd;
 }
