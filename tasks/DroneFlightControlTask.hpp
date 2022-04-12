@@ -116,12 +116,12 @@ namespace drone_dji_sdk
         Vehicle::ActivateData mActivateData;
         gps_base::UTMConverter mGPSSolution;
         std::unique_ptr<DJI::OSDK::Vehicle> mVehicle;
-        Mission mLastMission;
+        drone_control::Mission mLastMission;
         DJI::OSDK::ACK::ErrorCode mAuthorityStatus;
         Status mStatus;
 
         bool initVehicle();
-        bool missionInitSettings(Mission wypMission);
+        bool missionInitSettings(drone_control::Mission wypMission);
         bool checkTelemetrySubscription();
         bool setUpSubscription(
             int pkgIndex,
@@ -129,22 +129,28 @@ namespace drone_dji_sdk
             std::vector<Telemetry::TopicName> topicList);
         bool teardownSubscription(const int pkgIndex);
 
-        void posControl(VehicleSetpoint setpoint);
-        void velControl(VehicleSetpoint setpoint);
-        void land(VehicleSetpoint setpoint);
-        void takeoff(VehicleSetpoint setpoint);
-        void mission(Mission wypMission);
+        void posControl(drone_control::VehicleSetpoint setpoint);
+        void velControl(drone_control::VehicleSetpoint setpoint);
+        void land(drone_control::VehicleSetpoint setpoint);
+        void takeoff(drone_control::VehicleSetpoint setpoint);
+        void mission(drone_control::Mission wypMission);
 
         States runtimeStatesTransition(DJI::OSDK::Telemetry::SDKInfo control_device);
         void applyTransition(States const& next_state);
 
         // Helper Functions
-        bool checkDistanceThreshold(drone_dji_sdk::VehicleSetpoint pos);
-        gps_base::Solution convertToGPSPosition(Waypoint cmd_waypoint);
+        bool checkDistanceThreshold(drone_control::VehicleSetpoint pos);
+
+        gps_base::Solution convertToGPSPosition(drone_control::Waypoint cmd_waypoint);
+
         base::samples::RigidBodyState getRigidBodyState() const;
+
         power_base::BatteryStatus getBatteryStatus() const;
-        WayPointInitSettings getWaypointInitDefaults(Mission mission);
-        WayPointSettings getWaypointSettings(Waypoint cmd_waypoint, int index);
+
+        WayPointInitSettings getWaypointInitDefaults(drone_control::Mission mission);
+
+        DJI::OSDK::WayPointSettings
+        getWaypointSettings(drone_control::Waypoint cmd_waypoint, int index);
 
         /**
          * Check if the SDK can take the drone control authority.

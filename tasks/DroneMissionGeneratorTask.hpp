@@ -100,8 +100,8 @@ namespace drone_dji_sdk
 
     private:
         
-        Mission mMission;
-        std::vector<Waypoint> createWaypoints();
+        drone_control::Mission mMission;
+        std::vector<drone_control::Waypoint> createWaypoints();
 
     };
 }

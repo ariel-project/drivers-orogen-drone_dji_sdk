@@ -3,6 +3,7 @@
 #include "DroneMissionGeneratorTask.hpp"
 
 using namespace drone_dji_sdk;
+using namespace drone_control;
 
 DroneMissionGeneratorTask::DroneMissionGeneratorTask(std::string const &name)
     : DroneMissionGeneratorTaskBase(name)
@@ -68,7 +69,7 @@ DroneMissionGeneratorTask::createWaypoints()
     wp.turn_mode = TurnMode::CLOCKWISE;
     wp.action_time_limit = 100;
     wp.total_running_times = 0;
-    Action actions;
+    CameraAction actions;
     actions.command = 0;
     actions.command_parameter = 0;
     for (int i = 0; i < 16; i++)
