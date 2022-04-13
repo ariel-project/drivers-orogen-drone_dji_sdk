@@ -100,6 +100,7 @@ void DroneFlightControlTask::applyTransition(
 {
     if (next_state != CONTROLLING)
     {
+        state(next_state);
         return;
     }
 
@@ -119,8 +120,12 @@ void DroneFlightControlTask::applyTransition(
         control_device = mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
         now = Time::now();
     }
-    state(CONTROL_LOST);
-    return;
+    if (!canTakeControl(control_device))
+    {
+        state(CONTROL_LOST);
+        return;
+    }
+    state(next_state);
 }
 
 void DroneFlightControlTask::updateHook()
@@ -142,7 +147,6 @@ void DroneFlightControlTask::updateHook()
     if (state() != new_state)
     {
         applyTransition(new_state);
-        state(new_state);
     }
 
     mStatus.control_device = static_cast<ControlDevice>(control_device.deviceStatus);
