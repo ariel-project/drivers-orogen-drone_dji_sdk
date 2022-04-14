@@ -11,6 +11,7 @@
 #include <base/Angle.hpp>
 #include <base/Eigen.hpp>
 #include <base/Time.hpp>
+#include "drone_control/Command.hpp"
 
 namespace drone_dji_sdk
 {
@@ -38,6 +39,7 @@ namespace drone_dji_sdk
         AuthorityRequestResult authority_status;
         ControlDevice control_device;
         DeviceFlightStatus device_flight_status;
+        drone_control::FlightStatus flight_status;
     };
 } // namespace drone_dji_sdk
 
