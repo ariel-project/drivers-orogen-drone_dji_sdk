@@ -31,6 +31,7 @@ task_context "DroneFlightControlTask" do
 
     output_port "cmd_out_position", "/std/vector</base/Vector3d>"
     output_port "status", "drone_dji_sdk/Status"
+    output_port "flight_status", "drone_control/FlightStatus"
 
     runtime_states :TELEMETRY, :CONTROLLING, :CONTROL_LOST
 
