@@ -1,15 +1,18 @@
+# frozen_string_literal: true
+
 name "drone_dji_sdk"
 
 using_library "dji_sdk"
-
+using_library "drone_control"
 import_types_from "drone_dji_sdkTypes.hpp"
+import_types_from "drone_control/Command.hpp"
+import_types_from "drone_control/MissionCommand.hpp"
 import_types_from "power_base"
 import_types_from "gps_base"
 import_types_from "base"
 import_types_from "std"
 
 task_context "DroneFlightControlTask" do
-
     needs_configuration
 
     property "app_id", "/uint32_t", 0
@@ -19,15 +22,15 @@ task_context "DroneFlightControlTask" do
     property "pre_land_distance_threshold", "double", 1
     property "utm_parameters", "gps_base/UTMConversionParameters"
 
-    input_port "cmd_action", "drone_dji_sdk/CommandAction"
-    input_port "cmd_setpoint", "drone_dji_sdk/VehicleSetpoint"
-    input_port "cmd_mission", "/drone_dji_sdk/Mission"
+    input_port "cmd_action", "drone_control/CommandAction"
+    input_port "cmd_setpoint", "drone_control/VehicleSetpoint"
+    input_port "cmd_mission", "drone_control/Mission"
 
     output_port "pose_samples", "/base/samples/RigidBodyState"
     output_port "battery", "/power_base/BatteryStatus"
-    # Debug
+
     output_port "cmd_out_position", "/std/vector</base/Vector3d>"
-    output_port "status", "/drone_dji_sdk/Status"
+    output_port "status", "drone_dji_sdk/Status"
 
     runtime_states :TELEMETRY, :CONTROLLING, :CONTROL_LOST
 
@@ -37,10 +40,9 @@ task_context "DroneFlightControlTask" do
 end
 
 task_context "DroneMissionGeneratorTask" do
-
     needs_configuration
 
-    output_port "cmd_mission", "/drone_dji_sdk/Mission"
+    output_port "cmd_mission", "drone_control/Mission"
 
     # Deployed with a 10ms period by default
     periodic 0.01

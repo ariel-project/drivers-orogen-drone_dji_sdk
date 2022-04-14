@@ -4,6 +4,7 @@
 
 using namespace DJI::OSDK;
 using namespace drone_dji_sdk;
+using namespace drone_control;
 using namespace VehicleStatus;
 using namespace base;
 
@@ -150,7 +151,7 @@ void DroneFlightControlTask::updateHook()
     _status.write(mStatus);
 
     // cmd input
-    drone_dji_sdk::CommandAction cmd_action;
+    CommandAction cmd_action;
     if (_cmd_action.read(cmd_action) == RTT::NoData || state() == CONTROL_LOST)
     {
         return;
@@ -184,7 +185,7 @@ void DroneFlightControlTask::updateHook()
                 return;
             return land(setpoint);
         }
-        case POS_CONTROL_ACTIVATE:
+        case POSITION_CONTROL_ACTIVATE:
         {
             // setpoint input
             VehicleSetpoint setpoint;
@@ -192,7 +193,7 @@ void DroneFlightControlTask::updateHook()
                 return;
             return posControl(setpoint);
         }
-        case VEL_CONTROL_ACTIVATE:
+        case VELOCITY_CONTROL_ACTIVATE:
         {
             // setpoint input
             VehicleSetpoint setpoint;
@@ -377,7 +378,7 @@ void DroneFlightControlTask::velControl(VehicleSetpoint setpoint)
     // get offset
     base::Vector3d offset = (setpoint.velocity - velocity);
     // Convert to deg!
-    float yawRateDesiredInDeg = -(setpoint.yaw_rate.rad) * 180 / M_PI;
+    float yawRateDesiredInDeg = -setpoint.yaw_rate * 180 / M_PI;
 
     // Convert to NEU
     float32_t xCmd = static_cast<float>(offset[0]);

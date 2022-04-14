@@ -16,4 +16,5 @@
   <depend package="drivers/gps_base" />
   <depend package="drivers/orogen/gps_base" />
   <depend package="drivers/orogen/power_base" />
+  <depend package="control/drone_control" />
 </package>
