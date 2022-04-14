@@ -149,9 +149,12 @@ void DroneFlightControlTask::updateHook()
         applyTransition(new_state);
     }
 
+    auto flight_status =
+        mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
     mStatus.control_device = static_cast<ControlDevice>(control_device.deviceStatus);
     mStatus.device_flight_status =
         static_cast<DeviceFlightStatus>(control_device.flightStatus);
+    mStatus.flight_status = static_cast<drone_control::FlightStatus>(flight_status);
     _status.write(mStatus);
 
     // cmd input
@@ -162,10 +165,7 @@ void DroneFlightControlTask::updateHook()
     }
 
     // Check status
-    auto djiStatusFlight =
-        mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
-
-    if (djiStatusFlight != VehicleStatus::FlightStatus::IN_AIR &&
+    if (flight_status != VehicleStatus::FlightStatus::IN_AIR &&
         cmd_action != TAKEOFF_ACTIVATE)
     {
         return;
