@@ -112,11 +112,11 @@ DroneFlightControlTask::transitionToControlling()
         mAuthorityStatus = mVehicle->obtainCtrlAuthority(timeout);
         ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
         control_device = mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
+        now = Time::now();
         if (now < deadline)
         {
             return CONTROL_LOST;
         }
-        now = Time::now();
     }
     return CONTROLLING;
 }
@@ -151,15 +151,7 @@ void DroneFlightControlTask::updateHook()
         }
     }
 
-    auto dji_flight_status =
-        mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
-    mStatus.control_device = static_cast<ControlDevice>(control_device.deviceStatus);
-    mStatus.device_flight_status =
-        static_cast<DeviceFlightStatus>(control_device.flightStatus);
-    _status.write(mStatus);
-    drone_control::FlightStatus flight_status =
-        static_cast<drone_control::FlightStatus>(dji_flight_status);
-    _flight_status.write(flight_status);
+    writeStatus();
 
     // cmd input
     CommandAction cmd_action;
@@ -608,15 +600,8 @@ bool DroneFlightControlTask::teardownSubscription(const int pkgIndex)
     return true;
 }
 
-bool DroneFlightControlTask::canTakeControl(Telemetry::SDKInfo const& control_device)
+void DroneFlightControlTask::writeStatus()
 {
-    /** This check whether the SDK is controlling the drone or if the control device
-     * changes to the Remote Controller, and outputs the state.
-     *
-     * 0 - RC
-     * 1 - Mobile app
-     * 2 - Serial
-     */
     auto dji_flight_status =
         mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
     mStatus.control_device = static_cast<ControlDevice>(control_device.deviceStatus);
@@ -626,6 +611,17 @@ bool DroneFlightControlTask::canTakeControl(Telemetry::SDKInfo const& control_de
     drone_control::FlightStatus flight_status =
         static_cast<drone_control::FlightStatus>(dji_flight_status);
     _flight_status.write(flight_status);
+}
 
+bool DroneFlightControlTask::canTakeControl(Telemetry::SDKInfo const& control_device)
+{
+    /** This check whether the SDK is controlling the drone or if the control device
+     * changes to the Remote Controller, and outputs the state.
+     *
+     * 0 - RC
+     * 1 - Mobile app
+     * 2 - Serial
+     */
+    writeStatus();
     return control_device.deviceStatus == 2;
 }
