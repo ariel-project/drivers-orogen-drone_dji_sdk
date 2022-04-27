@@ -136,10 +136,12 @@ namespace drone_dji_sdk
         void mission(drone_control::Mission wypMission);
 
         States runtimeStatesTransition(DJI::OSDK::Telemetry::SDKInfo control_device);
-        void applyTransition(States const& next_state);
+        States transitionToControlling();
 
         // Helper Functions
         bool checkDistanceThreshold(drone_control::VehicleSetpoint pos);
+
+        uint8_t writeStatus(DJI::OSDK::Telemetry::SDKInfo const& control_device);
 
         gps_base::Solution convertToGPSPosition(drone_control::Waypoint cmd_waypoint);
 
