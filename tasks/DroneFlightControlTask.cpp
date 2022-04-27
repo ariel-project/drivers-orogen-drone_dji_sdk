@@ -113,7 +113,7 @@ DroneFlightControlTask::transitionToControlling()
         ACK::getErrorCodeMessage(mAuthorityStatus, __func__);
         control_device = mVehicle->subscribe->getValue<Telemetry::TOPIC_CONTROL_DEVICE>();
         now = Time::now();
-        if (now < deadline)
+        if (now > deadline)
         {
             return CONTROL_LOST;
         }
