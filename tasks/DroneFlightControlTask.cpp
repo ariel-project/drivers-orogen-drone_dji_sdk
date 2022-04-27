@@ -151,7 +151,7 @@ void DroneFlightControlTask::updateHook()
         }
     }
 
-    writeStatus();
+    auto dji_flight_status = writeStatus(control_device);
 
     // cmd input
     CommandAction cmd_action;
@@ -600,7 +600,7 @@ bool DroneFlightControlTask::teardownSubscription(const int pkgIndex)
     return true;
 }
 
-void DroneFlightControlTask::writeStatus()
+uint8_t DroneFlightControlTask::writeStatus(Telemetry::SDKInfo const& control_device)
 {
     auto dji_flight_status =
         mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
@@ -611,6 +611,7 @@ void DroneFlightControlTask::writeStatus()
     drone_control::FlightStatus flight_status =
         static_cast<drone_control::FlightStatus>(dji_flight_status);
     _flight_status.write(flight_status);
+    return dji_flight_status;
 }
 
 bool DroneFlightControlTask::canTakeControl(Telemetry::SDKInfo const& control_device)
@@ -622,6 +623,6 @@ bool DroneFlightControlTask::canTakeControl(Telemetry::SDKInfo const& control_de
      * 1 - Mobile app
      * 2 - Serial
      */
-    writeStatus();
+    writeStatus(control_device);
     return control_device.deviceStatus == 2;
 }

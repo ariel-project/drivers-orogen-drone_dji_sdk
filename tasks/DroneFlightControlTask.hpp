@@ -141,7 +141,7 @@ namespace drone_dji_sdk
         // Helper Functions
         bool checkDistanceThreshold(drone_control::VehicleSetpoint pos);
 
-        void writeStatus();
+        uint8_t writeStatus(DJI::OSDK::Telemetry::SDKInfo const& control_device);
 
         gps_base::Solution convertToGPSPosition(drone_control::Waypoint cmd_waypoint);
 
