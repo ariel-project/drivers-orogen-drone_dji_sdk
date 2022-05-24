@@ -167,20 +167,20 @@ void DroneFlightControlTask::updateHook()
 
     // Check status
     if (dji_flight_status != VehicleStatus::FlightStatus::IN_AIR &&
-        cmd_action != TAKEOFF_ACTIVATE)
+        cmd_action != REACTIVE_TAKE_OFF_VELOCITY_ACTIVATE)
     {
         return;
     }
 
     switch (cmd_action)
     {
-        case TAKEOFF_ACTIVATE:
+        case REACTIVE_TAKE_OFF_VELOCITY_ACTIVATE:
         {
             // setpoint input
             VehicleSetpoint setpoint;
             if (_cmd_setpoint.read(setpoint) != RTT::NewData)
                 return;
-            return takeoff(setpoint);
+            return reactiveTakeoffVelocity(setpoint);
         }
         case LANDING_ACTIVATE:
         {
@@ -308,7 +308,7 @@ bool DroneFlightControlTask::missionInitSettings(Mission wypMission)
     return true;
 }
 
-void DroneFlightControlTask::takeoff(VehicleSetpoint setpoint)
+void DroneFlightControlTask::reactiveTakeoffVelocity(VehicleSetpoint setpoint)
 {
     auto djiStatusFlight =
         mVehicle->subscribe->getValue<Telemetry::TOPIC_STATUS_FLIGHT>();
@@ -323,7 +323,7 @@ void DroneFlightControlTask::takeoff(VehicleSetpoint setpoint)
 
     if (djiStatusFlight == VehicleStatus::FlightStatus::IN_AIR)
     {
-        posControl(setpoint);
+        velControl(setpoint);
         return;
     }
 
