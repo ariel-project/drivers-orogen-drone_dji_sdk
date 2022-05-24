@@ -132,7 +132,6 @@ namespace drone_dji_sdk
         void posControl(drone_control::VehicleSetpoint setpoint);
         void velControl(drone_control::VehicleSetpoint setpoint);
         void land(drone_control::VehicleSetpoint setpoint);
-        void takeoff(drone_control::VehicleSetpoint setpoint);
         void reactiveTakeoffVelocity(drone_control::VehicleSetpoint setpoint);
         void mission(drone_control::Mission wypMission);
 
